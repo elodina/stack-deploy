@@ -1,15 +1,23 @@
 package framework
 
 import (
-	marathon "github.com/gambol99/go-marathon"
-	. "github.com/smartystreets/goconvey/convey"
+	"bytes"
+	"encoding/json"
+	"net/http"
 	"testing"
+	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
+)
+
+const (
+	TestEndpoint = "http://127.0.0.1:1308"
 )
 
 func TestNewApiServer(t *testing.T) {
 
 	Convey("Given an API endpoint, marathon client and storages", t, func() {
-		api := "http://127.0.0.1:1308"
+		api := TestEndpoint
 		marathonClient := MockMarathon("127.0.0.1:8080")
 		storage := &MockStorage{}
 		userStorage := &MockUserStorage{}
@@ -26,44 +34,106 @@ func TestNewApiServer(t *testing.T) {
 				So(server.api, ShouldNotContainSubstring, "http://")
 			})
 
+			Convey("When starting API server", func() {
+				Convey("It should not panic", func() {
+					So(func() { go server.Start(); time.Sleep(10 * time.Millisecond) }, ShouldNotPanic)
+				})
+			})
+
+			Convey("When starting second API server", func() {
+				Convey("It should panic", func() {
+					So(func() { server.Start() }, ShouldPanic)
+				})
+			})
+
 		})
 
 	})
 
 }
 
-type MockStorage struct{}
+func TestHandlers(t *testing.T) {
 
-func (*MockStorage) GetAll() ([]*Stack, error)             { return make([]*Stack, 0), nil }
-func (*MockStorage) GetStack(string) (*Stack, error)       { return nil, nil }
-func (*MockStorage) StoreStack(*Stack) error               { return nil }
-func (*MockStorage) RemoveStack(string, bool) error        { return nil }
-func (*MockStorage) Init() error                           { return nil }
-func (*MockStorage) GetLayersStack(string) (*Stack, error) { return nil, nil }
+	Convey("Given an API server started", t, func() {
 
-type MockUserStorage struct{}
+		Convey("When getting /health endpoint", func() {
+			resp, err := http.Get(TestEndpoint + "/health")
+			Convey("It should not return error", func() {
+				So(err, ShouldBeNil)
+			})
+			Convey("It should return status code 200", func() {
+				So(resp.StatusCode, ShouldEqual, 200)
+			})
+		})
 
-func (*MockUserStorage) SaveUser(User) error                         { return nil }
-func (*MockUserStorage) GetUser(string) (*User, error)               { return nil, nil }
-func (*MockUserStorage) CheckKey(string, string) (bool, error)       { return false, nil }
-func (*MockUserStorage) IsAdmin(string) (bool, error)                { return false, nil }
-func (*MockUserStorage) CreateUser(string, UserRole) (string, error) { return "", nil }
-func (*MockUserStorage) RefreshToken(string) (string, error)         { return "", nil }
+		Convey("Require auth", func() {
+			urls := []string{"/list",
+				"/get",
+				"/run",
+				"/createstack",
+				"/removestack",
+				"/createuser",
+				"/refreshtoken",
+				"/createlayer",
+			}
+			for _, url := range urls {
+				resp, _ := http.Post(TestEndpoint+url, "application/json", bytes.NewReader([]byte{}))
+				Convey(url+" should require credentials", func() {
+					So(resp.StatusCode, ShouldEqual, 403)
+				})
+			}
+		})
 
-type MockStateStorage struct{}
+		Convey("Require admin auth", func() {
+			urls := []string{"/createuser", "/refreshtoken"}
+			for _, url := range urls {
+				req, _ := http.NewRequest("POST", TestEndpoint+"/createuser", bytes.NewReader([]byte{}))
+				req.Header.Add("X-Api-User", "notadmin")
+				req.Header.Add("X-Api-Key", "key")
+				client := &http.Client{}
+				resp, _ := client.Do(req)
+				Convey(url+" should require admin credentials", func() {
+					So(resp.StatusCode, ShouldEqual, 403)
+				})
+			}
+		})
 
-func (*MockStateStorage) SaveTaskState(map[string]string, map[string]string, ApplicationState) error {
-	return nil
-}
-func (*MockStateStorage) SaveApplicationState(string, string, ApplicationState) error { return nil }
-func (*MockStateStorage) SaveStackState(string, ApplicationState) error               { return nil }
-func (*MockStateStorage) GetStackState(string) (map[string]ApplicationState, error) {
-	return make(map[string]ApplicationState), nil
-}
+		Convey("User management", func() {
+			Convey("/createuser", func() {
+				user := map[string]string{"name": "test", "role": "admin"}
+				encoded, _ := json.Marshal(user)
+				reader := bytes.NewReader(encoded)
+				req, _ := http.NewRequest("POST", TestEndpoint+"/createuser", reader)
+				req.Header.Add("X-Api-User", "admin")
+				req.Header.Add("X-Api-Key", "key")
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				Convey("It should not return error", func() {
+					So(err, ShouldBeNil)
+				})
+				Convey("It should return status code 201 Created", func() {
+					So(resp.StatusCode, ShouldEqual, 201)
+				})
+			})
 
-func MockMarathon(url string) marathon.Marathon {
-	marathonConfig := marathon.NewDefaultConfig()
-	marathonConfig.URL = url
-	marathonClient, _ := marathon.NewClient(marathonConfig)
-	return marathonClient
+			Convey("/refreshtoken", func() {
+				user := map[string]string{"name": "test"}
+				encoded, _ := json.Marshal(user)
+				reader := bytes.NewReader(encoded)
+				req, _ := http.NewRequest("POST", TestEndpoint+"/refreshtoken", reader)
+				req.Header.Add("X-Api-User", "admin")
+				req.Header.Add("X-Api-Key", "key")
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				Convey("It should not return error", func() {
+					So(err, ShouldBeNil)
+				})
+				Convey("It should return status code 200 OK", func() {
+					So(resp.StatusCode, ShouldEqual, 200)
+				})
+			})
+		})
+
+	})
+
 }

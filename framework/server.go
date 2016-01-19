@@ -84,14 +84,14 @@ func (ts *StackDeployServer) Auth(handler http.HandlerFunc) http.HandlerFunc {
 // Middleware for admin role check
 func (ts *StackDeployServer) Admin(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user := r.Header.Get("X-User-Name")
+		user := r.Header.Get("X-Api-User")
 		admin, err := ts.userStorage.IsAdmin(user)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if !admin {
-			http.Error(w, "User is not an admin", http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("User %s is not an admin", user), http.StatusForbidden)
 			return
 		}
 		handler(w, r)
@@ -276,7 +276,7 @@ func (ts *StackDeployServer) CreateUserHandler(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(key))
 }
 
