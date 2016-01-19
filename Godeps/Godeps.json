@@ -1,0 +1,63 @@
+{
+	"ImportPath": "github.com/elodina/stack-deploy",
+	"GoVersion": "go1.5.1",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/donovanhide/eventsource",
+			"Rev": "8c5962c7c1f7c559669b83d28370b5003c6a8a7f"
+		},
+		{
+			"ImportPath": "github.com/elodina/pyrgus/log",
+			"Rev": "a8f6e4a60d7f48dadc19bff157fe105270b87749"
+		},
+		{
+			"ImportPath": "github.com/gambol99/go-marathon",
+			"Rev": "acc2629d70da6ad42811a4f72fe53dde1d0a57d7"
+		},
+		{
+			"ImportPath": "github.com/gocql/gocql",
+			"Comment": "1st_gen_framing-378-gaddcbf2",
+			"Rev": "addcbf26229589fd12444c21315ea2e398a5265c"
+		},
+		{
+			"ImportPath": "github.com/golang/snappy",
+			"Rev": "723cc1e459b8eea2dea4583200fd60757d40097a"
+		},
+		{
+			"ImportPath": "github.com/google/go-querystring/query",
+			"Rev": "2a60fc2ba6c19de80291203597d752e9ba58e4c0"
+		},
+		{
+			"ImportPath": "github.com/hailocab/go-hostpool",
+			"Rev": "0637eae892be221164aff5fcbccc57171aea6406"
+		},
+		{
+			"ImportPath": "github.com/mitchellh/cli",
+			"Rev": "8102d0ed5ea2709ade1243798785888175f6e415"
+		},
+		{
+			"ImportPath": "github.com/satori/go.uuid",
+			"Rev": "d41af8bb6a7704f00bc3b7cba9355ae6a5a80048"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ssh/terminal",
+			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+		},
+		{
+			"ImportPath": "gopkg.in/cihub/seelog.v2",
+			"Comment": "go1.1",
+			"Rev": "791566c9a7e3d7342f2fc8bc017e1032c8df0e8f"
+		},
+		{
+			"ImportPath": "gopkg.in/inf.v0",
+			"Rev": "3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4"
+		},
+		{
+			"ImportPath": "gopkg.in/yaml.v2",
+			"Rev": "53feefa2559fb8dfa8d81baad31be332c97d6c77"
+		}
+	]
+}
