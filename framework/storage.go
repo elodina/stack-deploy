@@ -17,6 +17,7 @@ type Storage interface {
 	StoreStack(*Stack) error
 	RemoveStack(string, bool) error
 	Init() error
+	GetLayersStack(string) (*Stack, error)
 }
 
 type CassandraStorage struct {
@@ -25,32 +26,33 @@ type CassandraStorage struct {
 	lock       sync.Mutex
 }
 
-func NewCassandraStorageRetryBackoff(cluster []string, keyspace string, retries int, backoff time.Duration) (Storage, error) {
+func NewCassandraStorageRetryBackoff(cluster []string, keyspace string, retries int, backoff time.Duration) (Storage, *gocql.Session, error) {
 	var err error
 	var storage Storage
+	var connection *gocql.Session
 	for i := 0; i < retries; i++ {
 		Logger.Info("Trying to connect to cassandra cluster at %s: %d try", strings.Join(cluster, ","), i+1)
-		storage, err = NewCassandraStorage(cluster, keyspace)
+		storage, connection, err = NewCassandraStorage(cluster, keyspace)
 		if err == nil {
 			err = storage.Init()
 			if err == nil {
-				return storage, nil
+				return storage, connection, nil
 			}
 		}
 		Logger.Debug("Error: %s", err)
 		time.Sleep(backoff)
 	}
-	return nil, err
+	return nil, nil, err
 }
 
-func NewCassandraStorage(addresses []string, keyspace string) (Storage, error) {
+func NewCassandraStorage(addresses []string, keyspace string) (Storage, *gocql.Session, error) {
 	cluster := gocql.NewCluster(addresses...)
 	cluster.Timeout = 5 * time.Second
 	session, err := cluster.CreateSession()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &CassandraStorage{connection: session, keyspace: keyspace}, nil
+	return &CassandraStorage{connection: session, keyspace: keyspace}, session, nil
 }
 
 func (cs *CassandraStorage) GetAll() ([]*Stack, error) {
@@ -106,6 +108,48 @@ func (cs *CassandraStorage) GetStack(name string) (*Stack, error) {
 	}
 
 	return stack, nil
+}
+
+func (cs *CassandraStorage) GetLayersStack(name string) (*Stack, error) {
+	zone, err := cs.GetLayer(name)
+	if err != nil {
+		return nil, err
+	}
+	if zone.Stack.From == "" {
+		return zone.Stack, nil
+	}
+	cluster, err := cs.GetLayer(zone.Stack.From)
+	if err != nil {
+		return nil, err
+	}
+	if cluster.Stack.From == "" {
+		return cluster.Stack, nil
+	}
+	datacenter, err := cs.GetLayer(cluster.Stack.From)
+	if err != nil {
+		return nil, err
+	}
+	err = datacenter.Merge(cluster)
+	if err != nil {
+		return nil, err
+	}
+	err = datacenter.Merge(zone)
+	if err != nil {
+		return nil, err
+	}
+	return datacenter.Stack, nil
+}
+
+func (cs *CassandraStorage) GetLayer(name string) (*Layer, error) {
+	stack, err := cs.GetStack(name)
+	if err != nil {
+		return nil, err
+	}
+	layer := NewLayer(stack)
+	if layer != nil {
+		return layer, nil
+	}
+	return nil, fmt.Errorf("Can't create layer %s with level %d", name, stack.Layer)
 }
 
 func (cs *CassandraStorage) StoreStack(stack *Stack) error {

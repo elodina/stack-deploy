@@ -3,6 +3,7 @@ package framework
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gocql/gocql"
 )
 
 type StateStorage interface {
@@ -13,19 +14,18 @@ type StateStorage interface {
 }
 
 type CassandraStateStorage struct {
-	cassandraStorage *CassandraStorage
-	keyspace         string
+	connection *gocql.Session
+	keyspace   string
 }
 
-func NewCassandraStateStorage(store Storage) (StateStorage, error) {
-	cassandraStorage := store.(*CassandraStorage)
-	storage := &CassandraStateStorage{cassandraStorage: cassandraStorage, keyspace: cassandraStorage.keyspace}
+func NewCassandraStateStorage(connection *gocql.Session, keyspace string) (StateStorage, error) {
+	storage := &CassandraStateStorage{connection: connection, keyspace: keyspace}
 	return storage, storage.Init()
 }
 
 func (css CassandraStateStorage) GetStackState(id string) (map[string]ApplicationState, error) {
 	query := css.prepareQuery("SELECT id, state, props FROM %s.states WHERE parent = ?")
-	iter := css.cassandraStorage.connection.Query(query, id).Iter()
+	iter := css.connection.Query(query, id).Iter()
 	var (
 		appid    string
 		appstate ApplicationState
@@ -59,12 +59,12 @@ func (css CassandraStateStorage) SaveStackState(id string, state ApplicationStat
 
 func (css CassandraStateStorage) Init() error {
 	query := css.prepareQuery("CREATE TABLE IF NOT EXISTS %s.states (id text, type text, parent text, state int, props text, PRIMARY KEY(id, type, state))")
-	return css.cassandraStorage.connection.Query(query).Exec()
+	return css.connection.Query(query).Exec()
 }
 
 func (css CassandraStateStorage) saveState(id string, stateType string, parent string, state int, props string) error {
 	query := css.prepareQuery("INSERT INTO %s.states (id, type, parent, state, props) VALUES (?, ?, ?, ?)")
-	err := css.cassandraStorage.connection.Query(query, id, stateType, state, props).Exec()
+	err := css.connection.Query(query, id, stateType, state, props).Exec()
 	return err
 }
 

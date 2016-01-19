@@ -20,6 +20,7 @@ func (rc *RunCommand) Run(args []string) int {
 	var (
 		flags  = flag.NewFlagSet("run", flag.ExitOnError)
 		apiUrl = flags.String("api", "", "Stack-deploy server address.")
+		zone   = flags.String("zone", "", "Zone to run stack.")
 	)
 	flags.Parse(args[1:])
 
@@ -33,7 +34,7 @@ func (rc *RunCommand) Run(args []string) int {
 
 	fmt.Printf("Running stack %s\n", name)
 	start := time.Now()
-	err = client.Run(name)
+	err = client.Run(name, *zone)
 	if err != nil {
 		fmt.Printf("ERROR running client request: %s\n", err)
 		return 1
