@@ -15,6 +15,7 @@ stack-deploy
 * [Showing stacks](#showing-stacks)
 * [Running stacks](#running-stacks)
 * [Minimal stack examples](#minimal-stack-examples)
+* [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
 
 Installation
 ============
@@ -188,7 +189,7 @@ Removing stacks
 
 To remove a stack run the following command:
 
-    # ./stack-deploy remove dev.kafka-mesos --zone devzone
+    # ./stack-deploy remove dev.kafka-mesos
 
 If the given stack does not have any dependent stacks it will be removed. Otherwise you will get an error message with a list of dependent stacks that should be removed first. Alternatively you may pass a `--force` flag to remove a stack and all its children. Be careful though as it doesn't ask for confirmation.
 You can also pass an `--api` flag to specify the address of stack-deploy server. By default it assumes stack-deploy is running on `127.0.0.1:4200`.
@@ -210,7 +211,6 @@ You can also pass an `--api` flag to specify the address of stack-deploy server.
 
 Available flags:
 
-`--zone` - [``] - zone to run stack in.
 `--api` - [`http://127.0.0.1:4200`] - stack-deploy server address.    
 `--debug` - [`false`] - Flag for debug mode.
 
