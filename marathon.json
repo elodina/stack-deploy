@@ -1,0 +1,24 @@
+{
+  "id": "stack-deploy",
+  "cpus": 0.5,
+  "mem": 512,
+  "instances": 1,
+  "cmd": "chmod +x stack-deploy && ./stack-deploy server --api $HOST:$PORT0 --master master:5050 --marathon http://master:8080/ --cassandra {stack-deploy-dse.cassandraConnect} --bootstrap bootstrap.stack",
+  "uris": [
+    "http://your.repository.com/stack-deploy",
+    "http://your.repository.com/bootstrap.stack"
+  ],
+  "ports": [31333],
+  "requirePorts": true,
+  "healthChecks": [
+    {
+      "protocol": "HTTP",
+      "path": "/health",
+      "gracePeriodSeconds": 120,
+      "intervalSeconds": 60,
+      "portIndex": 0,
+      "timeoutSeconds": 30,
+      "maxConsecutiveFailures": 5
+    }
+  ]
+}

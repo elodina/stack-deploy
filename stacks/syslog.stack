@@ -1,0 +1,19 @@
+name: syslog
+applications:
+  syslog-kafka:
+    type: "syslog-mesos-0.1.x"
+    id: syslog-kafka
+    version: 0.1
+    cpu: 0.1
+    mem: 64
+    launch_command: "chmod +x syslog_cli && ./syslog_cli scheduler"
+    artifact_urls:
+      - "http://your.repository.com/syslog_cli"
+      - "http://your.repository.com/syslog_executor"
+    scheduler:
+      api: http://$HOST:$PORT0
+      master: ${mesos.master}
+      log.level: debug
+    tasks:
+      - topic: syslog
+        broker.list: 192.168.3.1:9092

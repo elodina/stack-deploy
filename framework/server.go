@@ -1,0 +1,284 @@
+package framework
+
+import (
+	"encoding/json"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+
+	marathon "github.com/gambol99/go-marathon"
+	yaml "gopkg.in/yaml.v2"
+)
+
+type StackDeployServer struct {
+	api            string
+	marathonClient marathon.Marathon
+	storage        Storage
+	stateStorage   StateStorage
+	userStorage    UserStorage
+}
+
+type CreateStackRequest struct {
+	Stackfile string `json:"stackfile"`
+}
+
+func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage) (*StackDeployServer, string) {
+	if strings.HasPrefix(api, "http://") {
+		api = api[len("http://"):]
+	}
+	userStorage, key, err := NewCassandraUserStorage(storage)
+	if err != nil {
+		panic(err)
+	}
+	stateStorage, err := NewCassandraStateStorage(storage)
+	if err != nil {
+		panic(err)
+	}
+	server := &StackDeployServer{
+		api:            api,
+		marathonClient: marathonClient,
+		storage:        storage,
+		stateStorage:   stateStorage,
+		userStorage:    userStorage,
+	}
+	return server, key
+}
+
+func (ts *StackDeployServer) Start() {
+	http.HandleFunc("/list", ts.Auth(ts.ListHandler))
+	http.HandleFunc("/get", ts.Auth(ts.GetStackHandler))
+	http.HandleFunc("/run", ts.Auth(ts.RunHandler))
+	http.HandleFunc("/createstack", ts.Auth(ts.CreateStackHandler))
+	http.HandleFunc("/removestack", ts.Auth(ts.RemoveStackHandler))
+	http.HandleFunc("/health", ts.HealthHandler)
+	http.HandleFunc("/createuser", ts.Auth(ts.Admin(ts.CreateUserHandler)))
+	http.HandleFunc("/refreshtoken", ts.Auth(ts.Admin(ts.RefreshTokenHandler)))
+	Logger.Info("Start API Server on: %s", ts.api)
+	err := http.ListenAndServe(ts.api, nil)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// Middleware for authentication check
+func (ts *StackDeployServer) Auth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Header.Get("X-Api-User")
+		key := r.Header.Get("X-Api-Key")
+		Logger.Debug("User %s, key %s", user, key)
+		valid, err := ts.userStorage.CheckKey(user, key)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !valid {
+			http.Error(w, "Unauthorized", http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+// Middleware for admin role check
+func (ts *StackDeployServer) Admin(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Header.Get("X-User-Name")
+		admin, err := ts.userStorage.IsAdmin(user)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !admin {
+			http.Error(w, "User is not an admin", http.StatusForbidden)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+func (ts *StackDeployServer) ListHandler(w http.ResponseWriter, r *http.Request) {
+	Logger.Debug("Received list command")
+	defer r.Body.Close()
+
+	stacks, err := ts.storage.GetAll()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	stackNames := make([]string, len(stacks))
+	for idx, stack := range stacks {
+		stackNames[idx] = stack.Name
+	}
+
+	sort.Strings(stackNames)
+	yamlStacks, err := yaml.Marshal(stackNames)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(yamlStacks)
+}
+
+func (ts *StackDeployServer) GetStackHandler(w http.ResponseWriter, r *http.Request) {
+	Logger.Debug("Received get stack command")
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	getRequest := struct {
+		Name string `json:"name"`
+	}{}
+	decoder.Decode(&getRequest)
+	if getRequest.Name == "" {
+		http.Error(w, "Stack name required", http.StatusBadRequest)
+		return
+	} else {
+		stack, err := ts.storage.GetStack(getRequest.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		yamlStack, err := yaml.Marshal(stack)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(yamlStack)
+	}
+}
+
+func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) {
+	Logger.Debug("Received run command")
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	runRequest := struct {
+		Name string `json:"name"`
+	}{}
+	decoder.Decode(&runRequest)
+	stackName := runRequest.Name
+	if stackName == "" {
+		http.Error(w, "Stack name required", http.StatusBadRequest)
+		return
+	} else {
+		//refresh Mesos state first, consider refreshing periodically when supporting auto-scaling
+		err := Mesos.Update()
+		if err != nil {
+			Logger.Error("Refresh Mesos state error: %s", err)
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		_, err = ts.runStack(stackName, ts.storage)
+		if err != nil {
+			Logger.Error("Run stack error: %s", err)
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *StackDeployServer) CreateStackHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	request := &CreateStackRequest{}
+	err := decoder.Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	stack, err := UnmarshalStack([]byte(request.Stackfile))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	Logger.Debug(stack)
+	err = ts.storage.StoreStack(stack)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *StackDeployServer) RemoveStackHandler(w http.ResponseWriter, r *http.Request) {
+	Logger.Debug("Received remove command")
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	removeRequest := struct {
+		Name  string `json:"name"`
+		Force string `json:"force"`
+	}{}
+	decoder.Decode(&removeRequest)
+	force, err := strconv.ParseBool(removeRequest.Force)
+	if err != nil {
+		Logger.Info("Invalid force flag value: %s", removeRequest.Force)
+		http.Error(w, "Invalid force flag value", http.StatusBadRequest)
+		return
+	}
+
+	stackName := removeRequest.Name
+	if stackName == "" {
+		http.Error(w, "Stack name required", http.StatusBadRequest)
+		return
+	} else {
+		err := ts.storage.RemoveStack(stackName, force)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *StackDeployServer) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	var user User
+	err := decoder.Decode(&user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	Logger.Debug("Creating user: %v", user)
+	key, err := ts.userStorage.CreateUser(user.Name, user.Role)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(key))
+}
+
+func (ts *StackDeployServer) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	var user User
+	err := decoder.Decode(&user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	key, err := ts.userStorage.RefreshToken(user.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(key))
+}
+
+func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *StackDeployServer) runStack(name string, storage Storage) (*Context, error) {
+	stack, err := storage.GetStack(name)
+	if err != nil {
+		return nil, err
+	}
+
+	Logger.Info("Running stack %s", name)
+	return stack.Run(ts.marathonClient, ts.stateStorage)
+}
