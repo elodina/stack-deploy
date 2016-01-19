@@ -15,6 +15,7 @@ stack-deploy
 * [Showing stacks](#showing-stacks)
 * [Running stacks](#running-stacks)
 * [Minimal stack examples](#minimal-stack-examples)
+* [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
 
 Installation
 ============
