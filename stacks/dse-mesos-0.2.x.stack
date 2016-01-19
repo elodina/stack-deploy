@@ -1,0 +1,29 @@
+name: dse-mesos-0.2.x
+applications:
+  dse-mesos:
+    type: "dse-mesos-0.2.x"
+    id: dse-mesos-0.2.x
+    version: 0.1
+    cpu: 0.1
+    mem: 512
+    launch_command: "chmod +x dse-mesos.sh && ./dse-mesos.sh scheduler"
+    artifact_urls: 
+      - "http://your.repository.com/dse-mesos-0.2.jar"
+      - "http://your.repository.com/dse-mesos.sh"
+      - "http://your.repository.com/dse.tar.gz"
+      - "http://your.repository.com/jre-7u79-linux-x64.tar.gz"
+    healthcheck: /health
+    scheduler:
+      api: http://$HOST:$PORT0
+      master: ${mesos.master}
+      debug: true
+      framework-name: "dse-mesos-0.2.x"
+    tasks:
+      - node: 10
+        cpu: 0.5
+        mem: 16000
+        timeout: 30min
+        api: "${dse-mesos-0.2.x.api}"
+        constraints: "hostname=unique"
+        cluster: "dse-mesos"
+        cqlPort: 31100

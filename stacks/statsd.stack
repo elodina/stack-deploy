@@ -1,0 +1,20 @@
+name: statsd
+applications:
+  statsd-mesos:
+    type: "statsd-mesos-0.1.x"
+    id: statsd-kafka
+    version: 0.1
+    cpu: 0.1
+    mem: 128
+    launch_command: "chmod +x statsd_cli && ./statsd_cli scheduler"
+    artifact_urls:
+      - "http://your.repository.com/statsd_cli"
+      - "http://your.repository.com/statsd_executor"
+      - "http://your.repository.com/statsd_producer.properties"
+    scheduler:
+      api: http://$HOST:$PORT0
+      master: ${mesos.master}
+      log.level: debug
+    tasks:
+      - topic: statsd
+        producer.properties: statsd_producer.properties
