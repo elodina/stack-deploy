@@ -93,10 +93,10 @@ func (c *Client) GetStack(name string) (*framework.Stack, error) {
 	return stack, err
 }
 
-func (c *Client) Run(name string) error {
+func (c *Client) Run(name string, zone string) error {
 	request := apiRequest{
 		url:  "/run",
-		data: requestData{"name": name},
+		data: requestData{"name": name, "zone": zone},
 	}
 	_, err := c.request(request)
 	return err

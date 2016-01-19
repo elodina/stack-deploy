@@ -2,6 +2,7 @@ package framework
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -23,17 +24,14 @@ type CreateStackRequest struct {
 	Stackfile string `json:"stackfile"`
 }
 
-func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage) (*StackDeployServer, string) {
+type CreateLayerRequest struct {
+	Stackfile string `json:"stackfile"`
+	Layer     string `json:"layer"`
+}
+
+func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage, userStorage UserStorage, stateStorage StateStorage) *StackDeployServer {
 	if strings.HasPrefix(api, "http://") {
 		api = api[len("http://"):]
-	}
-	userStorage, key, err := NewCassandraUserStorage(storage)
-	if err != nil {
-		panic(err)
-	}
-	stateStorage, err := NewCassandraStateStorage(storage)
-	if err != nil {
-		panic(err)
 	}
 	server := &StackDeployServer{
 		api:            api,
@@ -42,7 +40,7 @@ func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage)
 		stateStorage:   stateStorage,
 		userStorage:    userStorage,
 	}
-	return server, key
+	return server
 }
 
 func (ts *StackDeployServer) Start() {
@@ -54,6 +52,9 @@ func (ts *StackDeployServer) Start() {
 	http.HandleFunc("/health", ts.HealthHandler)
 	http.HandleFunc("/createuser", ts.Auth(ts.Admin(ts.CreateUserHandler)))
 	http.HandleFunc("/refreshtoken", ts.Auth(ts.Admin(ts.RefreshTokenHandler)))
+
+	http.HandleFunc("/createlayer", ts.Auth(ts.CreateLayerHandler))
+
 	Logger.Info("Start API Server on: %s", ts.api)
 	err := http.ListenAndServe(ts.api, nil)
 	if err != nil {
@@ -155,6 +156,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 	decoder := json.NewDecoder(r.Body)
 	runRequest := struct {
 		Name string `json:"name"`
+		Zone string `json:"zone"`
 	}{}
 	decoder.Decode(&runRequest)
 	stackName := runRequest.Name
@@ -169,7 +171,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		_, err = ts.runStack(stackName, ts.storage)
+		_, err = ts.runStack(stackName, runRequest.Zone, ts.storage)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -194,6 +196,33 @@ func (ts *StackDeployServer) CreateStackHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	Logger.Debug(stack)
+	err = ts.storage.StoreStack(stack)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *StackDeployServer) CreateLayerHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	request := &CreateLayerRequest{}
+	err := decoder.Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	stack, err := UnmarshalStack([]byte(request.Stackfile))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	stack.Layer, err = layerToInt(request.Layer)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	err = ts.storage.StoreStack(stack)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -273,12 +302,32 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(name string, storage Storage) (*Context, error) {
+func (ts *StackDeployServer) runStack(name string, zone string, storage Storage) (*Context, error) {
 	stack, err := storage.GetStack(name)
 	if err != nil {
 		return nil, err
 	}
+	if zone != "" {
+		layers, err := storage.GetLayersStack(zone)
+		if err != nil {
+			return nil, err
+		}
+		layers.Merge(stack)
+		stack = layers
+	}
 
 	Logger.Info("Running stack %s", name)
-	return stack.Run(ts.marathonClient, ts.stateStorage)
+	return stack.Run(zone, ts.marathonClient, ts.stateStorage)
+}
+
+func layerToInt(layer string) (int, error) {
+	switch layer {
+	case "zone":
+		return LayerZone, nil
+	case "cluster":
+		return LayerCluster, nil
+	case "datacenter":
+		return LayerDataCenter, nil
+	}
+	return 0, fmt.Errorf("Invalid layer: %s", layer)
 }

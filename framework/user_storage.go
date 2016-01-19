@@ -36,9 +36,8 @@ type CassandraUserStorage struct {
 	keyspace   string
 }
 
-func NewCassandraUserStorage(storage Storage) (*CassandraUserStorage, string, error) {
-	cStorage := storage.(*CassandraStorage)
-	store := &CassandraUserStorage{connection: cStorage.connection, keyspace: cStorage.keyspace}
+func NewCassandraUserStorage(connection *gocql.Session, keyspace string) (*CassandraUserStorage, string, error) {
+	store := &CassandraUserStorage{connection: connection, keyspace: keyspace}
 	key, err := store.Init()
 	if err != nil {
 		return nil, "", err

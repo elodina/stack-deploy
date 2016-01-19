@@ -95,12 +95,21 @@ func (sc *ServerCommand) Run(args []string) int {
 		Logger.Info("Cassandra connect after resolving: %s", *cassandra)
 	}
 
-	storage, err := framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff)
+	storage, connection, err := framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff)
 	if err != nil {
 		panic(err)
 	}
 
-	apiServer, key := framework.NewApiServer(*api, marathonClient, storage)
+	userStorage, key, err := framework.NewCassandraUserStorage(connection, *keyspace)
+	if err != nil {
+		panic(err)
+	}
+	stateStorage, err := framework.NewCassandraStateStorage(connection, *keyspace)
+	if err != nil {
+		panic(err)
+	}
+
+	apiServer := framework.NewApiServer(*api, marathonClient, storage, userStorage, stateStorage)
 	if key != "" {
 		fmt.Printf("***\nAdmin user key: %s\n***\n", key)
 	}
@@ -125,8 +134,9 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 	Logger.Debug("Boostrapping with stack: \n%s", string(stackFileData))
 
 	var context *framework.Context
+	bootstrapZone := ""
 	for i := 0; i < retries; i++ {
-		context, err = stack.Run(marathonClient, nil)
+		context, err = stack.Run(bootstrapZone, marathonClient, nil)
 		if err == nil {
 			return context, err
 		}

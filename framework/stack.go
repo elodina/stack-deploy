@@ -7,11 +7,19 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+const (
+	ConfigStack = iota
+	ConfigDataCenter
+	ConfigCluster
+	ConfigZone
+)
+
 type Stack struct {
 	Namespace    string
 	Name         string                  `yaml:"name,omitempty"`
 	From         string                  `yaml:"from,omitempty"`
 	Applications map[string]*Application `yaml:"applications,omitempty"`
+	Layer int
 
 	stateStorage StateStorage
 }
@@ -91,7 +99,7 @@ func (s *Stack) Validate() error {
 	return nil
 }
 
-func (s *Stack) Run(client marathon.Marathon, stateStorage StateStorage) (*Context, error) {
+func (s *Stack) Run(zone string, client marathon.Marathon, stateStorage StateStorage) (*Context, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
