@@ -47,3 +47,12 @@ func MockMarathon(url string) marathon.Marathon {
 	marathonClient, _ := marathon.NewClient(marathonConfig)
 	return marathonClient
 }
+
+type MockTaskRunner struct{}
+
+func (*MockTaskRunner) FillContext(context *Context, application *Application, task marathon.Task) error {
+	return nil
+}
+func (*MockTaskRunner) RunTask(context *Context, application *Application, task map[string]string) error {
+	return nil
+}

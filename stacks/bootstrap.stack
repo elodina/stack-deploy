@@ -19,7 +19,8 @@ applications:
       debug: true
       framework-name: "stack-deploy-dse"
     tasks:
-      - node: 0
+      node:
+        node: 0
         cpu: 1
         mem: 8000
         timeout: 30min
