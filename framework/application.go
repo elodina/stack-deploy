@@ -107,7 +107,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 	Logger.Debug("Running application: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
-	err := a.ensureResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
+	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 	}
 
 	a.resolveVariables(context)
-	err = a.ensureResolved(context, a.AfterScheduler)
+	err = ensureVariablesResolved(context, a.AfterScheduler)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 
 		for _, task := range a.Tasks {
 			a.resolveVariables(context)
-			err = a.ensureResolved(context, a.BeforeTask, task)
+			err = ensureVariablesResolved(context, a.BeforeTask, task)
 			if err != nil {
 				return err
 			}
@@ -163,7 +163,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 			}
 
 			a.resolveVariables(context)
-			err = a.ensureResolved(context, a.AfterTask)
+			err = ensureVariablesResolved(context, a.AfterTask)
 			if err != nil {
 				return err
 			}
@@ -177,7 +177,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 	}
 
 	a.resolveVariables(context)
-	err = a.ensureResolved(context, a.AfterTasks)
+	err = ensureVariablesResolved(context, a.AfterTasks)
 	if err != nil {
 		return err
 	}
@@ -210,46 +210,6 @@ func (a *Application) resolveVariables(context *Context) {
 		a.resolveCmdVariables(a.AfterTask)
 		a.resolveCmdVariables(a.AfterTasks)
 	}
-}
-
-func (a *Application) ensureResolved(context *Context, values ...interface{}) error {
-	for _, value := range values {
-		switch v := value.(type) {
-		case string:
-			{
-				if err := a.ensureResolvedString(context, v); err != nil {
-					return err
-				}
-			}
-		case map[string]string:
-			{
-				for _, val := range v {
-					if err := a.ensureResolvedString(context, val); err != nil {
-						return err
-					}
-				}
-			}
-		case yaml.MapSlice:
-			{
-				for _, m := range v {
-					if err := a.ensureResolvedString(context, m.Value.(string)); err != nil {
-						return err
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (a *Application) ensureResolvedString(context *Context, value string) error {
-	unresolved := variableRegexp.FindString(value)
-	if unresolved != "" {
-		return fmt.Errorf("Unresolved variable %s. Available variables:\n%s", unresolved, context)
-	}
-
-	return nil
 }
 
 func (a *Application) executeCommands(commands []string, fileName string) error {
@@ -396,4 +356,44 @@ func (a *Application) String() string {
 	}
 
 	return string(yml)
+}
+
+func ensureVariablesResolved(context *Context, values ...interface{}) error {
+	for _, value := range values {
+		switch v := value.(type) {
+		case string:
+			{
+				if err := ensureStringVariableResolved(context, v); err != nil {
+					return err
+				}
+			}
+		case map[string]string:
+			{
+				for _, val := range v {
+					if err := ensureStringVariableResolved(context, val); err != nil {
+						return err
+					}
+				}
+			}
+		case yaml.MapSlice:
+			{
+				for _, m := range v {
+					if err := ensureStringVariableResolved(context, m.Value.(string)); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func ensureStringVariableResolved(context *Context, value string) error {
+	unresolved := variableRegexp.FindString(value)
+	if unresolved != "" {
+		return fmt.Errorf("Unresolved variable %s. Available variables:\n%s", unresolved, context)
+	}
+
+	return nil
 }

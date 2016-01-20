@@ -179,6 +179,42 @@ var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*
 	},
 }
 
+var ensureResolvedPositiveCases []interface{} = []interface{}{
+	"./some_script.sh --debug",
+	map[string]string{
+		"foo": "bar",
+		"asd": "zxc",
+	},
+	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   "foo",
+			Value: "bar",
+		},
+		yaml.MapItem{
+			Key:   "asd",
+			Value: "zxc",
+		},
+	},
+}
+
+var ensureResolvedNegativeCases []interface{} = []interface{}{
+	"./some_script.sh --param ${foo}",
+	map[string]string{
+		"foo": "bar",
+		"asd": "${foo}",
+	},
+	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   "foo",
+			Value: "${foo}",
+		},
+		yaml.MapItem{
+			Key:   "asd",
+			Value: "zxc",
+		},
+	},
+}
+
 func TestApplication(t *testing.T) {
 
 	Convey("Validating applications", t, func() {
@@ -202,6 +238,26 @@ func TestApplication(t *testing.T) {
 		for app, state := range dependencyNegativeCases {
 			So(app.IsDependencySatisfied(state), ShouldBeFalse)
 		}
+	})
+
+	Convey("Ensure variables resolved", t, func() {
+		Convey("Should find unresolved variables", func() {
+			for _, entry := range ensureResolvedPositiveCases {
+				So(ensureVariablesResolved(nil, entry), ShouldBeNil)
+			}
+
+			for _, entry := range ensureResolvedNegativeCases {
+				So(ensureVariablesResolved(nil, entry).Error(), ShouldContainSubstring, "Unresolved variable ${foo}")
+			}
+		})
+	})
+
+	Convey("Application should provide healthcheck if specified", t, func() {
+		app := new(Application)
+		So(app.getHealthchecks(), ShouldBeNil)
+
+		app.Healthcheck = "/health"
+		So(len(app.getHealthchecks()), ShouldEqual, 1)
 	})
 
 }
