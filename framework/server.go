@@ -155,8 +155,9 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
 	runRequest := struct {
-		Name string `json:"name"`
-		Zone string `json:"zone"`
+		Name    string `json:"name"`
+		Zone    string `json:"zone"`
+		MaxWait int    `json:"maxwait"`
 	}{}
 	decoder.Decode(&runRequest)
 	stackName := runRequest.Name
@@ -171,7 +172,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		_, err = ts.runStack(stackName, runRequest.Zone, ts.storage)
+		_, err = ts.runStack(stackName, runRequest.Zone, ts.storage, runRequest.MaxWait)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -302,7 +303,7 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(name string, zone string, storage Storage) (*Context, error) {
+func (ts *StackDeployServer) runStack(name string, zone string, storage Storage, maxAppWait int) (*Context, error) {
 	stack, err := storage.GetStack(name)
 	if err != nil {
 		return nil, err
@@ -317,7 +318,7 @@ func (ts *StackDeployServer) runStack(name string, zone string, storage Storage)
 	}
 
 	Logger.Info("Running stack %s in zone '%s'", name, zone)
-	return stack.Run(zone, ts.marathonClient, ts.stateStorage)
+	return stack.Run(zone, ts.marathonClient, ts.stateStorage, maxAppWait)
 }
 
 func layerToInt(layer string) (int, error) {

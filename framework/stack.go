@@ -99,7 +99,7 @@ func (s *Stack) Validate() error {
 	return nil
 }
 
-func (s *Stack) Run(zone string, client marathon.Marathon, stateStorage StateStorage) (*Context, error) {
+func (s *Stack) Run(zone string, client marathon.Marathon, stateStorage StateStorage, maxAppWait int) (*Context, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (s *Stack) Run(zone string, client marathon.Marathon, stateStorage StateSto
 	}
 	context.Set("mesos.master", info.MarathonConfig.Master)
 
-	s.runApplications(runningApps, context, client, statuses)
+	s.runApplications(runningApps, context, client, statuses, maxAppWait)
 
 	for status := range statuses {
 		if status.err != nil {
@@ -133,7 +133,7 @@ func (s *Stack) Run(zone string, client marathon.Marathon, stateStorage StateSto
 			return context, nil
 		}
 
-		s.runApplications(runningApps, context, client, statuses)
+		s.runApplications(runningApps, context, client, statuses, maxAppWait)
 	}
 
 	return context, nil
@@ -143,7 +143,8 @@ func (s Stack) ID() string {
 	return fmt.Sprintf("%s.%s", s.Namespace, s.Name)
 }
 
-func (s *Stack) runApplications(runningApps map[string]ApplicationState, context *Context, client marathon.Marathon, status chan *applicationRunStatus) {
+func (s *Stack) runApplications(runningApps map[string]ApplicationState, context *Context, client marathon.Marathon,
+	status chan *applicationRunStatus, maxWait int) {
 	Logger.Debug("Running applications...")
 	for _, app := range s.Applications {
 		if _, exists := runningApps[app.ID]; exists {
@@ -153,13 +154,14 @@ func (s *Stack) runApplications(runningApps map[string]ApplicationState, context
 
 		if app.IsDependencySatisfied(runningApps) {
 			runningApps[app.ID] = StateStaging
-			go s.runApplication(app, context, client, status)
+			go s.runApplication(app, context, client, status, maxWait)
 		}
 	}
 }
 
-func (s *Stack) runApplication(app *Application, context *Context, client marathon.Marathon, status chan *applicationRunStatus) {
-	err := app.Run(context, client, s.stateStorage)
+func (s *Stack) runApplication(app *Application, context *Context, client marathon.Marathon,
+	status chan *applicationRunStatus, maxWait int) {
+	err := app.Run(context, client, s.stateStorage, maxWait)
 	if err != nil {
 		// TODO should remove the application if anything goes wrong
 	}

@@ -67,7 +67,7 @@ func (m *MockMarathon) ApplicationVersions(name string) (*marathon.ApplicationVe
 }
 
 func (m *MockMarathon) CreateApplication(application *marathon.Application) (*marathon.Application, error) {
-	return nil, nil
+	return application, m.err
 }
 
 func (m *MockMarathon) CreateGroup(group *marathon.Group) error {

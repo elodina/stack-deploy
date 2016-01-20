@@ -106,7 +106,7 @@ func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationSt
 	return true
 }
 
-func (a *Application) Run(context *Context, client marathon.Marathon, stateStorage StateStorage) error {
+func (a *Application) Run(context *Context, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
 	Logger.Debug("Running application: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
@@ -125,7 +125,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 		return err
 	}
 
-	err = a.awaitRunningAndHealthy(client, 120, 5*time.Second) //TODO configurable
+	err = a.awaitRunningAndHealthy(client, maxWait)
 	if err != nil {
 		return err
 	}
@@ -208,11 +208,11 @@ func (a *Application) resolveVariables(context *Context) {
 			}
 		}
 
-		a.resolveCmdVariables(a.BeforeScheduler)
-		a.resolveCmdVariables(a.AfterScheduler)
-		a.resolveCmdVariables(a.BeforeTask)
-		a.resolveCmdVariables(a.AfterTask)
-		a.resolveCmdVariables(a.AfterTasks)
+		a.resolveCmdVariables(a.BeforeScheduler, context)
+		a.resolveCmdVariables(a.AfterScheduler, context)
+		a.resolveCmdVariables(a.BeforeTask, context)
+		a.resolveCmdVariables(a.AfterTask, context)
+		a.resolveCmdVariables(a.AfterTasks, context)
 	}
 }
 
@@ -235,9 +235,11 @@ func (a *Application) executeCommands(commands []string, fileName string) error 
 	return cmd.Run()
 }
 
-func (a *Application) resolveCmdVariables(commands []string) {
-	for idx, cmd := range commands {
-		commands[idx] = strings.Replace(cmd, fmt.Sprintf("${%s}", fmt.Sprint(idx)), fmt.Sprint(cmd), -1)
+func (a *Application) resolveCmdVariables(commands []string, context *Context) {
+	for k, v := range context.All() {
+		for idx, cmd := range commands {
+			commands[idx] = strings.Replace(cmd, fmt.Sprintf("${%s}", k), v, -1)
+		}
 	}
 }
 
@@ -254,14 +256,14 @@ func (a *Application) fillContext(context *Context, runner TaskRunner, client ma
 	return runner.FillContext(context, a, tasks.Tasks[0])
 }
 
-func (a *Application) awaitRunningAndHealthy(client marathon.Marathon, retries int, backoff time.Duration) error {
+func (a *Application) awaitRunningAndHealthy(client marathon.Marathon, retries int) error {
 	for i := 0; i <= retries; i++ {
 		err := a.checkRunningAndHealthy(client)
 		if err == nil {
 			return nil
 		}
 
-		time.Sleep(backoff)
+		time.Sleep(time.Second)
 	}
 	return fmt.Errorf("Failed to await until the task is running and healthy within %d retries", retries)
 }
@@ -365,6 +367,14 @@ func ensureVariablesResolved(context *Context, values ...interface{}) error {
 			{
 				if err := ensureStringVariableResolved(context, v); err != nil {
 					return err
+				}
+			}
+		case []string:
+			{
+				for _, val := range v {
+					if err := ensureStringVariableResolved(context, val); err != nil {
+						return err
+					}
 				}
 			}
 		case map[string]string:

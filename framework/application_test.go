@@ -374,13 +374,13 @@ func TestApplication(t *testing.T) {
 			client := NewMockMarathon()
 
 			go func() {
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(1100 * time.Millisecond)
 				client.applications["foo"] = new(marathon.Application)
 				client.applications["foo"].TasksRunning = 1
 				client.applications["foo"].TasksHealthy = 1
 			}()
 
-			So(app.awaitRunningAndHealthy(client, 3, 100*time.Millisecond).Error(), ShouldContainSubstring, "Failed to await")
+			So(app.awaitRunningAndHealthy(client, 1).Error(), ShouldContainSubstring, "Failed to await")
 		})
 
 		Convey("Should succeed if task becomes running and healthy in reasonable time", func() {
@@ -393,7 +393,7 @@ func TestApplication(t *testing.T) {
 				client.applications["foo"].TasksHealthy = 1
 			}()
 
-			So(app.awaitRunningAndHealthy(client, 3, 100*time.Millisecond), ShouldBeNil)
+			So(app.awaitRunningAndHealthy(client, 2), ShouldBeNil)
 		})
 	})
 
@@ -420,6 +420,101 @@ func TestApplication(t *testing.T) {
 
 		client.err = errors.New("boom!")
 		So(app.fillContext(ctx, runner, client).Error(), ShouldEqual, "boom!")
+	})
+
+	Convey("Application run", t, func() {
+		ctx := NewContext()
+		client := NewMockMarathon()
+
+		app := new(Application)
+		app.ID = "foo"
+
+		Convey("Should fail if there is unresolved variable in BeforeScheduler script", func() {
+			app.BeforeScheduler = []string{"${bar}"}
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			app.BeforeScheduler = nil
+		})
+
+		Convey("Should fail if there is an error in BeforeScheduler script", func() {
+			app.BeforeScheduler = []string{"echozzz"}
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+			app.BeforeScheduler = nil
+		})
+
+		Convey("Should fail if there is unresolved variable in launch command", func() {
+			app.LaunchCommand = "./script --flag ${asd} --debug"
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			app.LaunchCommand = ""
+		})
+
+		Convey("Should fail if there is unresolved variable in scheduler configurations", func() {
+			app.Scheduler = map[string]string{
+				"asd": "zxc",
+				"bar": "${baz}",
+			}
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			app.Scheduler = nil
+		})
+
+		Convey("Should fail if Marathon application creation fails", func() {
+			client.err = errors.New("boom!")
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+			app.Scheduler = nil
+		})
+
+		Convey("Should fail if there is unresolved variable in AfterScheduler script", func() {
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				client.applications["foo"] = new(marathon.Application)
+				client.applications["foo"].TasksRunning = 1
+				client.applications["foo"].TasksHealthy = 1
+			}()
+
+			app.AfterScheduler = []string{"${bar}"}
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			app.AfterScheduler = nil
+			delete(client.applications, "foo")
+		})
+
+		Convey("Should fail if there is an error in AfterScheduler script", func() {
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				client.applications["foo"] = new(marathon.Application)
+				client.applications["foo"].TasksRunning = 1
+				client.applications["foo"].TasksHealthy = 1
+			}()
+
+			app.AfterScheduler = []string{"echozzz"}
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+			app.AfterScheduler = nil
+			delete(client.applications, "foo")
+		})
+
+		Convey("Should fail if there is unresolved variable in AfterTasks script", func() {
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				client.applications["foo"] = new(marathon.Application)
+				client.applications["foo"].TasksRunning = 1
+				client.applications["foo"].TasksHealthy = 1
+			}()
+
+			app.AfterTasks = []string{"${bar}"}
+			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			app.AfterTasks = nil
+			delete(client.applications, "foo")
+		})
+
+		Convey("Should succeed if everything is ok", func() {
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				client.applications["foo"] = new(marathon.Application)
+				client.applications["foo"].TasksRunning = 1
+				client.applications["foo"].TasksHealthy = 1
+			}()
+
+			So(app.Run(ctx, client, new(MockStateStorage), 2), ShouldBeNil)
+			delete(client.applications, "foo")
+		})
 	})
 
 }
