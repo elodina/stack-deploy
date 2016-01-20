@@ -54,36 +54,37 @@ type Application struct {
 
 func (a *Application) Validate() error {
 	if a.Type == "" {
-		return errors.New("No type")
+		return ErrApplicationNoType
 	}
 
 	if len(a.Tasks) > 0 {
 		_, ok := TaskRunners[a.Type]
 		if !ok {
-			return fmt.Errorf("No task runner available for application type %s", a.Type)
+			Logger.Info("%s: %s", ErrApplicationNoTaskRunner, a.Type)
+			return ErrApplicationNoTaskRunner
 		}
 	}
 
 	if a.ID == "" {
-		return errors.New("No ID")
+		return ErrApplicationNoID
 	}
 
-	if a.Cpu == 0.0 {
-		return errors.New("CPU cannot be 0.0")
+	if a.Cpu <= 0.0 {
+		return ErrApplicationInvalidCPU
 	}
 
-	if a.Mem == 0.0 {
-		return errors.New("Mem cannot be 0.0")
+	if a.Mem <= 0.0 {
+		return ErrApplicationInvalidMem
 	}
 
 	if a.LaunchCommand == "" {
-		return errors.New("No launch command")
+		return ErrApplicationNoLaunchCommand
 	}
 
 	if a.Instances != "" && a.Instances != "all" {
 		instances, err := strconv.Atoi(a.Instances)
 		if err != nil || instances < 1 {
-			return errors.New("Invalid number of instances: supported are numbers greater than zero and 'all'")
+			return ErrApplicationInvalidInstances
 		}
 	}
 
