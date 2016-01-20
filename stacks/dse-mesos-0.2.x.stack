@@ -19,7 +19,8 @@ applications:
       debug: true
       framework-name: "dse-mesos-0.2.x"
     tasks:
-      - node: 10
+      seed:
+        node: 10
         cpu: 0.5
         mem: 16000
         timeout: 30min

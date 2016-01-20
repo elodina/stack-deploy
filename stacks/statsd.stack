@@ -16,5 +16,6 @@ applications:
       master: ${mesos.master}
       log.level: debug
     tasks:
-      - topic: statsd
+      statsd:
+        topic: statsd
         producer.properties: statsd_producer.properties
