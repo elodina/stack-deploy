@@ -41,13 +41,6 @@ func (*MockStateStorage) GetStackState(string) (map[string]ApplicationState, err
 	return make(map[string]ApplicationState), nil
 }
 
-func MockMarathon(url string) marathon.Marathon {
-	marathonConfig := marathon.NewDefaultConfig()
-	marathonConfig.URL = url
-	marathonClient, _ := marathon.NewClient(marathonConfig)
-	return marathonClient
-}
-
 type MockTaskRunner struct{}
 
 func (*MockTaskRunner) FillContext(context *Context, application *Application, task marathon.Task) error {

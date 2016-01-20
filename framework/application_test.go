@@ -18,8 +18,10 @@ package framework
 import (
 	"testing"
 
+	"bytes"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/yaml.v2"
+	"os"
 )
 
 var validationCases map[*Application]error = map[*Application]error{
@@ -325,6 +327,18 @@ func TestApplication(t *testing.T) {
 		}
 
 		So(app.getLaunchCommand(), ShouldEqual, "./script.sh --foo bar")
+	})
+
+	Convey("Custom shell commands should run correctly", t, func() {
+		buffer := new(bytes.Buffer)
+		stdout = buffer
+		defer func() {
+			stdout = os.Stdout
+		}()
+		app := new(Application)
+
+		So(app.executeCommands([]string{"echo stack-deploy"}, "__sd_test.sh"), ShouldBeNil)
+		So(string(buffer.Bytes()), ShouldContainSubstring, "stack-deploy")
 	})
 
 }

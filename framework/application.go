@@ -12,6 +12,7 @@ import (
 
 	marathon "github.com/gambol99/go-marathon"
 	yaml "gopkg.in/yaml.v2"
+	"io"
 	"strconv"
 )
 
@@ -22,6 +23,9 @@ const (
 	StateRunning
 	StateFail
 )
+
+// for testing purposes
+var stdout io.Writer = os.Stdout
 
 var variableRegexp = regexp.MustCompile("\\$\\{.*\\}")
 
@@ -227,7 +231,7 @@ func (a *Application) executeCommands(commands []string, fileName string) error 
 	defer os.Remove(fileName)
 
 	cmd := exec.Command("sh", fileName)
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
