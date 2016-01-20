@@ -19,9 +19,12 @@ import (
 	"testing"
 
 	"bytes"
+	"errors"
+	"github.com/gambol99/go-marathon"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/yaml.v2"
 	"os"
+	"time"
 )
 
 var validationCases map[*Application]error = map[*Application]error{
@@ -339,6 +342,84 @@ func TestApplication(t *testing.T) {
 
 		So(app.executeCommands([]string{"echo stack-deploy"}, "__sd_test.sh"), ShouldBeNil)
 		So(string(buffer.Bytes()), ShouldContainSubstring, "stack-deploy")
+	})
+
+	Convey("Application checks for running and healthy should work properly", t, func() {
+		app := new(Application)
+		app.ID = "foo"
+		app.Healthcheck = "/health"
+
+		client := NewMockMarathon()
+		So(app.checkRunningAndHealthy(client), ShouldEqual, ErrApplicationDoesNotExist)
+
+		client.applications["foo"] = new(marathon.Application)
+		So(app.checkRunningAndHealthy(client), ShouldEqual, ErrTaskNotRunning)
+
+		client.applications["foo"].TasksRunning = 1
+		So(app.checkRunningAndHealthy(client), ShouldEqual, ErrHealthcheckNotPassing)
+
+		client.applications["foo"].TasksHealthy = 1
+		So(app.checkRunningAndHealthy(client), ShouldBeNil)
+
+		client.err = errors.New("boom!")
+		So(app.checkRunningAndHealthy(client).Error(), ShouldEqual, "boom!")
+	})
+
+	Convey("Await for application running and healthy", t, func() {
+		app := new(Application)
+		app.ID = "foo"
+		app.Healthcheck = "/health"
+
+		Convey("Should fail if time/retries exceeded", func() {
+			client := NewMockMarathon()
+
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				client.applications["foo"] = new(marathon.Application)
+				client.applications["foo"].TasksRunning = 1
+				client.applications["foo"].TasksHealthy = 1
+			}()
+
+			So(app.awaitRunningAndHealthy(client, 3, 100*time.Millisecond).Error(), ShouldContainSubstring, "Failed to await")
+		})
+
+		Convey("Should succeed if task becomes running and healthy in reasonable time", func() {
+			client := NewMockMarathon()
+
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				client.applications["foo"] = new(marathon.Application)
+				client.applications["foo"].TasksRunning = 1
+				client.applications["foo"].TasksHealthy = 1
+			}()
+
+			So(app.awaitRunningAndHealthy(client, 3, 100*time.Millisecond), ShouldBeNil)
+		})
+	})
+
+	Convey("Task runner should fill application context properly", t, func() {
+		ctx := NewContext()
+		runner := new(MockTaskRunner)
+		client := NewMockMarathon()
+
+		app := new(Application)
+		app.ID = "foo"
+
+		client.tasks["foo"] = &marathon.Tasks{
+			Tasks: []marathon.Task{
+				marathon.Task{},
+			},
+		}
+
+		So(len(ctx.All()), ShouldEqual, 0)
+		So(app.fillContext(ctx, runner, client), ShouldBeNil)
+		So(len(ctx.All()), ShouldEqual, 1)
+
+		delete(client.tasks, "foo")
+		So(app.fillContext(ctx, runner, client), ShouldEqual, ErrTaskNotRunning)
+
+		client.err = errors.New("boom!")
+		So(app.fillContext(ctx, runner, client).Error(), ShouldEqual, "boom!")
 	})
 
 }

@@ -1,7 +1,6 @@
 package framework
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -248,8 +247,8 @@ func (a *Application) fillContext(context *Context, runner TaskRunner, client ma
 		return err
 	}
 
-	if len(tasks.Tasks) == 0 {
-		return errors.New("No tasks are running?")
+	if tasks == nil || len(tasks.Tasks) == 0 {
+		return ErrTaskNotRunning
 	}
 
 	return runner.FillContext(context, a, tasks.Tasks[0])
@@ -273,12 +272,16 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 		return err
 	}
 
+	if app == nil {
+		return ErrApplicationDoesNotExist
+	}
+
 	if app.TasksRunning == 0 {
-		return errors.New("Task is not yet running")
+		return ErrTaskNotRunning
 	}
 
 	if a.Healthcheck != "" && app.TasksHealthy == 0 {
-		return errors.New("Task healthcheck is not yet passing")
+		return ErrHealthcheckNotPassing
 	}
 
 	return nil

@@ -22,6 +22,16 @@ import (
 )
 
 type MockMarathon struct {
+	applications map[string]*marathon.Application
+	tasks        map[string]*marathon.Tasks
+	err          error
+}
+
+func NewMockMarathon() *MockMarathon {
+	return &MockMarathon{
+		applications: make(map[string]*marathon.Application),
+		tasks:        make(map[string]*marathon.Tasks),
+	}
 }
 
 func (m *MockMarathon) AbdicateLeader() (string, error) {
@@ -37,7 +47,7 @@ func (m *MockMarathon) AllTasks(opts *marathon.AllTasksOpts) (*marathon.Tasks, e
 }
 
 func (m *MockMarathon) Application(name string) (*marathon.Application, error) {
-	return nil, nil
+	return m.applications[name], m.err
 }
 
 func (m *MockMarathon) ApplicationDeployments(name string) ([]*marathon.DeploymentID, error) {
@@ -153,7 +163,7 @@ func (m *MockMarathon) TaskEndpoints(name string, port int, healthCheck bool) ([
 }
 
 func (m *MockMarathon) Tasks(application string) (*marathon.Tasks, error) {
-	return nil, nil
+	return m.tasks[application], m.err
 }
 
 func (m *MockMarathon) Unsubscribe(string) error {

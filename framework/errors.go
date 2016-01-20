@@ -30,3 +30,9 @@ var ErrApplicationInvalidMem = errors.New("Invalid application Mem")
 var ErrApplicationNoLaunchCommand = errors.New("No launch command specified for application")
 
 var ErrApplicationInvalidInstances = errors.New("Invalid number of application instances: supported are numbers greater than zero and 'all'")
+
+var ErrApplicationDoesNotExist = errors.New("Application does not exist")
+
+var ErrTaskNotRunning = errors.New("Task is not running")
+
+var ErrHealthcheckNotPassing = errors.New("Task healthcheck is not passing")

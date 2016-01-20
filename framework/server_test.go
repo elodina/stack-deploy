@@ -18,7 +18,7 @@ func TestNewApiServer(t *testing.T) {
 
 	Convey("Given an API endpoint, marathon client and storages", t, func() {
 		api := TestEndpoint
-		marathonClient := new(MockMarathon)
+		marathonClient := NewMockMarathon()
 		storage := &MockStorage{}
 		userStorage := &MockUserStorage{}
 		stateStorage := &MockStateStorage{}

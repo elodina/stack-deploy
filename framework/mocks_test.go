@@ -44,6 +44,7 @@ func (*MockStateStorage) GetStackState(string) (map[string]ApplicationState, err
 type MockTaskRunner struct{}
 
 func (*MockTaskRunner) FillContext(context *Context, application *Application, task marathon.Task) error {
+	context.Set("foo", "bar")
 	return nil
 }
 func (*MockTaskRunner) RunTask(context *Context, application *Application, task map[string]string) error {
