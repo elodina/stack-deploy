@@ -21,7 +21,8 @@ applications:
       debug: true
       storage: "zk:zookeeper.service:2181/exhibitor-mesos"
     tasks:
-      - id: 0..2
+      exhibitors:
+        id: 0..2
         cpu: 0.1
         mem: 1024
         port: 31150
@@ -52,7 +53,8 @@ applications:
       log: "./std-log.log"
       debug: true
     tasks:
-      - id: 0..2
+      brokers:
+        id: 0..2
         cpus: 0.5
         mem: 1024
         constraints: "hostname=unique"

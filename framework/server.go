@@ -316,7 +316,7 @@ func (ts *StackDeployServer) runStack(name string, zone string, storage Storage)
 		stack = layers
 	}
 
-	Logger.Info("Running stack %s", name)
+	Logger.Info("Running stack %s in zone '%s'", name, zone)
 	return stack.Run(zone, ts.marathonClient, ts.stateStorage)
 }
 

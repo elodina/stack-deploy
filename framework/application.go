@@ -26,22 +26,22 @@ const (
 var variableRegexp = regexp.MustCompile("\\$\\{.*\\}")
 
 type Application struct {
-	Type                string              `yaml:"type,omitempty"`
-	ID                  string              `yaml:"id,omitempty"`
-	Version             string              `yaml:"version,omitempty"`
-	Cpu                 float64             `yaml:"cpu,omitempty"`
-	Mem                 float64             `yaml:"mem,omitempty"`
-	Ports               []int               `yaml:"ports,omitempty"`
-	Instances           string              `yaml:"instances,omitempty"`
-	Constraints         [][]string          `yaml:"constraints,omitempty"`
-	User                string              `yaml:"user,omitempty"`
-	Healthcheck         string              `yaml:"healthcheck,omitempty"`
-	LaunchCommand       string              `yaml:"launch_command,omitempty"`
-	ArtifactURLs        []string            `yaml:"artifact_urls,omitempty"`
-	AdditionalArtifacts []string            `yaml:"additional_artifacts,omitempty"`
-	Scheduler           map[string]string   `yaml:"scheduler,omitempty"`
-	Tasks               []map[string]string `yaml:"tasks,omitempty"`
-	Dependencies        []string            `yaml:"dependencies,omitempty"`
+	Type                string            `yaml:"type,omitempty"`
+	ID                  string            `yaml:"id,omitempty"`
+	Version             string            `yaml:"version,omitempty"`
+	Cpu                 float64           `yaml:"cpu,omitempty"`
+	Mem                 float64           `yaml:"mem,omitempty"`
+	Ports               []int             `yaml:"ports,omitempty"`
+	Instances           string            `yaml:"instances,omitempty"`
+	Constraints         [][]string        `yaml:"constraints,omitempty"`
+	User                string            `yaml:"user,omitempty"`
+	Healthcheck         string            `yaml:"healthcheck,omitempty"`
+	LaunchCommand       string            `yaml:"launch_command,omitempty"`
+	ArtifactURLs        []string          `yaml:"artifact_urls,omitempty"`
+	AdditionalArtifacts []string          `yaml:"additional_artifacts,omitempty"`
+	Scheduler           map[string]string `yaml:"scheduler,omitempty"`
+	Tasks               yaml.MapSlice     `yaml:"tasks,omitempty"`
+	Dependencies        []string          `yaml:"dependencies,omitempty"`
 
 	BeforeScheduler []string `yaml:"before_scheduler,omitempty"`
 	AfterScheduler  []string `yaml:"after_scheduler,omitempty"`
@@ -155,8 +155,8 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 				return err
 			}
 
-			Logger.Info("Running task: %v", task)
-			err = runner.RunTask(context, a, task)
+			Logger.Info("Running task %s", task.Key)
+			err = runner.RunTask(context, a, MapSliceToMap(task.Value.(yaml.MapSlice)))
 			if err != nil {
 				return err
 			}
@@ -197,9 +197,9 @@ func (a *Application) resolveVariables(context *Context) {
 		for schedulerKey, schedulerValue := range a.Scheduler {
 			a.Scheduler[schedulerKey] = strings.Replace(schedulerValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
-		for _, task := range a.Tasks {
-			for taskKey, taskValue := range task {
-				task[taskKey] = strings.Replace(taskValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+		for _, taskSlice := range a.Tasks {
+			for _, task := range taskSlice.Value.(yaml.MapSlice) {
+				task.Value = strings.Replace(fmt.Sprint(task.Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 			}
 		}
 
@@ -228,13 +228,11 @@ func (a *Application) ensureResolved(context *Context, values ...interface{}) er
 					}
 				}
 			}
-		case []map[string]string:
+		case yaml.MapSlice:
 			{
 				for _, m := range v {
-					for _, val := range m {
-						if err := a.ensureResolvedString(context, val); err != nil {
-							return err
-						}
+					if err := a.ensureResolvedString(context, m.Value.(string)); err != nil {
+						return err
 					}
 				}
 			}

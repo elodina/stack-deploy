@@ -124,7 +124,7 @@ Stack is a YAML file that contains information about Applications that should be
 `artifact_urls` - [`array[string]`] - artifacts to be downloaded before running the application scheduler.    
 `additional_artifacts` - [`array[string]`] - additional artifacts to be downloaded before running the application scheduler. This can be used to avoid overriding the artifact list in child stacks. All additional artifacts will be appended to artifact urls list.    
 `scheduler` - [`map[string]string`] - scheduler configurations. Everything specified in these configurations will be appended to `launch_command` in form `--k v`.    
-`tasks` - [`array[map[string]string]`] - array of task configurations. Array length defines the number of separate tasks launched for this application. It is up to `TaskRunner` to decide how to use information contained in each task configuration.
+`tasks` - [`map[string]map[string]string`] - ordered map of task configurations. Map length defines the number of separate tasks launched for this application. It is up to `TaskRunner` to decide how to use information contained in each task configuration.
 `dependencies` - [`array[string]`] - application dependencies. The application in stack won't be run until all its dependencies are satisfied. E.g. applications without dependencies will be launched first, then others with resolved dependencies.
 
 Stack inheritance
@@ -163,7 +163,8 @@ applications:
     cpu: 1
     mem: 1024
     tasks:
-      - id: 0..3
+      brokers:
+        id: 0..3
         constraints: "hostname=unique"
 ```
 
@@ -211,7 +212,6 @@ You can also pass an `--api` flag to specify the address of stack-deploy server.
 
 Available flags:
 
-`--zone` - [``] - zone to run stack in.
 `--api` - [`http://127.0.0.1:4200`] - stack-deploy server address.    
 `--debug` - [`false`] - Flag for debug mode.
 
@@ -241,6 +241,7 @@ You can also pass an `--api` flag to specify the address of stack-deploy server.
 
 Available flags:
 
+`--zone` - [empty string] - zone to run stack in.    
 `--api` - [`http://127.0.0.1:4200`] - stack-deploy server address.    
 `--debug` - [`false`] - Flag for debug mode.
 

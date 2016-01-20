@@ -1,6 +1,10 @@
 package framework
 
-import "github.com/elodina/pyrgus/log"
+import (
+	"fmt"
+	"github.com/elodina/pyrgus/log"
+	"gopkg.in/yaml.v2"
+)
 
 var Logger = log.NewDefaultLogger()
 
@@ -26,4 +30,13 @@ func setFloat(from float64, to *float64) {
 	if from != 0.0 {
 		*to = from
 	}
+}
+
+func MapSliceToMap(slice yaml.MapSlice) map[string]string {
+	m := make(map[string]string)
+	for _, entry := range slice {
+		m[fmt.Sprint(entry.Key)] = fmt.Sprint(entry.Value)
+	}
+
+	return m
 }

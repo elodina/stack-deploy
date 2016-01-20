@@ -19,16 +19,19 @@ applications:
       master: ${mesos.master}
       debug: true
     tasks:
-      - type: collector
+      collector:
+        type: collector
         id: 0
         mem: 512
         env: "KAFKA_ZOOKEEPER=192.168.3.1:2181,KAFKA_TOPIC=zipkin,CASSANDRA_CONTACT_POINTS=192.168.3.1"
         timeout: 60s
-      - type: query
+      query:
+        type: query
         id: 0
         mem: 512
         env: "CASSANDRA_CONTACT_POINTS=192.168.3.1"
-      - type: web
+      web:
+        type: web
         id: 0
         mem: 512
         flags: "zipkin.web.query.dest=${zipkin-mesos.query-0.endpoint}"

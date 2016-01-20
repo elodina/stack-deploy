@@ -19,7 +19,7 @@ type Stack struct {
 	Name         string                  `yaml:"name,omitempty"`
 	From         string                  `yaml:"from,omitempty"`
 	Applications map[string]*Application `yaml:"applications,omitempty"`
-	Layer int
+	Layer        int
 
 	stateStorage StateStorage
 }
