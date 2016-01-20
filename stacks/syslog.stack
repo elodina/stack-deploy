@@ -15,5 +15,6 @@ applications:
       master: ${mesos.master}
       log.level: debug
     tasks:
-      - topic: syslog
+      syslog:
+        topic: syslog
         broker.list: 192.168.3.1:9092
