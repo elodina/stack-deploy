@@ -252,6 +252,43 @@ func TestApplication(t *testing.T) {
 		})
 	})
 
+	Convey("Application should resolve variables", t, func() {
+		ctx := NewContext()
+		ctx.Set("foo", "bar")
+
+		app := new(Application)
+		app.LaunchCommand = "./${foo}.sh"
+		app.Scheduler = map[string]string{
+			"flag": "${foo}",
+		}
+		app.Tasks = yaml.MapSlice{
+			yaml.MapItem{
+				Key: "task",
+				Value: yaml.MapSlice{
+					yaml.MapItem{
+						Key:   "param",
+						Value: "${foo}",
+					},
+				},
+			},
+		}
+		app.BeforeScheduler = []string{"${foo}"}
+		app.AfterScheduler = []string{"${foo}"}
+		app.BeforeTask = []string{"${foo}"}
+		app.AfterTask = []string{"${foo}"}
+		app.AfterTasks = []string{"${foo}"}
+
+		app.resolveVariables(ctx)
+		So(ensureVariablesResolved(ctx, app.LaunchCommand), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.Scheduler), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.Tasks), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.BeforeScheduler), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.AfterScheduler), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.BeforeTask), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.AfterTask), ShouldBeNil)
+		So(ensureVariablesResolved(ctx, app.AfterTasks), ShouldBeNil)
+	})
+
 	Convey("Application should provide healthcheck if specified", t, func() {
 		app := new(Application)
 		So(app.getHealthchecks(), ShouldBeNil)

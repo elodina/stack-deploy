@@ -199,8 +199,9 @@ func (a *Application) resolveVariables(context *Context) {
 			a.Scheduler[schedulerKey] = strings.Replace(schedulerValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
 		for _, taskSlice := range a.Tasks {
-			for _, task := range taskSlice.Value.(yaml.MapSlice) {
-				task.Value = strings.Replace(fmt.Sprint(task.Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+			tasks := taskSlice.Value.(yaml.MapSlice)
+			for i := 0; i < len(tasks); i++ {
+				tasks[i].Value = strings.Replace(fmt.Sprint(tasks[i].Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 			}
 		}
 
@@ -370,7 +371,7 @@ func ensureVariablesResolved(context *Context, values ...interface{}) error {
 		case yaml.MapSlice:
 			{
 				for _, m := range v {
-					if err := ensureStringVariableResolved(context, m.Value.(string)); err != nil {
+					if err := ensureVariablesResolved(context, m.Value); err != nil {
 						return err
 					}
 				}
