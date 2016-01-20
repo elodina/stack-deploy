@@ -286,7 +286,7 @@ func (a *Application) createApplication() *marathon.Application {
 		Instances:    a.getInstances(),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
-		Ports:        a.getPorts(),
+		Ports:        a.Ports,
 		RequirePorts: len(a.Ports) > 0,
 		Uris:         append(a.ArtifactURLs, a.AdditionalArtifacts...),
 		User:         a.User,
@@ -321,14 +321,6 @@ func (a *Application) getInstances() int {
 	}
 
 	return instances
-}
-
-func (a *Application) getPorts() []int {
-	if len(a.Ports) > 0 {
-		return a.Ports
-	}
-
-	return nil
 }
 
 func (a *Application) getHealthchecks() []*marathon.HealthCheck {

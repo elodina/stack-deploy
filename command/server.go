@@ -67,8 +67,8 @@ func (sc *ServerCommand) Run(args []string) int {
 
 	framework.TaskRunners = sc.runners
 
-	var err error
-	framework.Mesos, err = framework.NewMesosState(*masterURL)
+	framework.Mesos = framework.NewMesosState(*masterURL)
+	err := framework.Mesos.Update()
 	if err != nil {
 		Logger.Critical("%s", err)
 		return 1

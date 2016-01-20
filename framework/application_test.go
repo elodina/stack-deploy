@@ -260,4 +260,34 @@ func TestApplication(t *testing.T) {
 		So(len(app.getHealthchecks()), ShouldEqual, 1)
 	})
 
+	Convey("Application should set the right number of instances", t, func() {
+		Mesos = NewMesosState("")
+		Mesos.ActivatedSlaves = 12
+		app := new(Application)
+		// 1 is default
+		So(app.getInstances(), ShouldEqual, 1)
+
+		app.Instances = "34"
+		So(app.getInstances(), ShouldEqual, 34)
+
+		app.Instances = "all"
+		So(app.getInstances(), ShouldEqual, 12)
+
+		app.Instances = "foo"
+		So(func() { app.getInstances() }, ShouldPanic)
+	})
+
+	Convey("Application should form a correct launch string", t, func() {
+		app := new(Application)
+		app.LaunchCommand = "./script.sh"
+
+		So(app.getLaunchCommand(), ShouldEqual, "./script.sh")
+
+		app.Scheduler = map[string]string{
+			"foo": "bar",
+		}
+
+		So(app.getLaunchCommand(), ShouldEqual, "./script.sh --foo bar")
+	})
+
 }

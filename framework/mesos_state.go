@@ -33,7 +33,7 @@ type MesosState struct {
 	lock   sync.Mutex
 }
 
-func NewMesosState(master string) (*MesosState, error) {
+func NewMesosState(master string) *MesosState {
 	if !strings.HasPrefix(master, "http://") {
 		master = "http://" + master
 	}
@@ -42,11 +42,9 @@ func NewMesosState(master string) (*MesosState, error) {
 		master = master[:len(master)-1]
 	}
 
-	state := &MesosState{
+	return &MesosState{
 		master: master,
 	}
-
-	return state, state.Update()
 }
 
 func (ms *MesosState) Update() error {
