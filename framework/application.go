@@ -23,8 +23,9 @@ const (
 	StateFail
 )
 
-// for testing purposes
+// exposed for testing purposes
 var stdout io.Writer = os.Stdout
+var applicationAwaitBackoff = time.Second
 
 var variableRegexp = regexp.MustCompile("\\$\\{.*\\}")
 
@@ -263,7 +264,7 @@ func (a *Application) awaitRunningAndHealthy(client marathon.Marathon, retries i
 			return nil
 		}
 
-		time.Sleep(time.Second)
+		time.Sleep(applicationAwaitBackoff)
 	}
 	return fmt.Errorf("Failed to await until the task is running and healthy within %d retries", retries)
 }
