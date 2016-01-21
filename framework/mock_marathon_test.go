@@ -18,6 +18,7 @@ package framework
 import (
 	"github.com/gambol99/go-marathon"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,8 @@ type MockMarathon struct {
 	applications map[string]*marathon.Application
 	tasks        map[string]*marathon.Tasks
 	err          error
+
+	applicationLock sync.Mutex
 }
 
 func NewMockMarathon() *MockMarathon {
@@ -47,6 +50,9 @@ func (m *MockMarathon) AllTasks(opts *marathon.AllTasksOpts) (*marathon.Tasks, e
 }
 
 func (m *MockMarathon) Application(name string) (*marathon.Application, error) {
+	m.applicationLock.Lock()
+	defer m.applicationLock.Unlock()
+
 	return m.applications[name], m.err
 }
 
@@ -192,4 +198,13 @@ func (m *MockMarathon) WaitOnGroup(name string, timeout time.Duration) error {
 
 func (m *MockMarathon) ListApplications(url.Values) ([]string, error) {
 	return nil, nil
+}
+
+func (m *MockMarathon) addHealthyApplication(app string) {
+	m.applicationLock.Lock()
+	defer m.applicationLock.Unlock()
+
+	m.applications[app] = new(marathon.Application)
+	m.applications[app].TasksRunning = 1
+	m.applications[app].TasksHealthy = 1
 }

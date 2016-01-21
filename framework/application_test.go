@@ -591,7 +591,5 @@ func TestApplication(t *testing.T) {
 
 func reportHealthy(client *MockMarathon, app string, after time.Duration) {
 	time.Sleep(after)
-	client.applications[app] = new(marathon.Application)
-	client.applications[app].TasksRunning = 1
-	client.applications[app].TasksHealthy = 1
+	client.addHealthyApplication(app)
 }
