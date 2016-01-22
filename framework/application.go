@@ -322,7 +322,7 @@ func (a *Application) getInstances() int {
 	}
 
 	if a.Instances == "all" {
-		return int(Mesos.ActivatedSlaves)
+		return int(Mesos.GetActivatedSlaves())
 	}
 
 	instances, err := strconv.Atoi(a.Instances)

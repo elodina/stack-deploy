@@ -35,6 +35,18 @@ func UnmarshalStack(yml []byte) (*Stack, error) {
 	return stack, nil
 }
 
+func (s *Stack) GetApplications() map[string]*Application {
+	return s.Applications
+}
+
+func (s *Stack) GetRunner() Runner {
+	return s
+}
+
+func (s *Stack) GetStack() *Stack {
+	return s
+}
+
 func (s *Stack) Merge(child *Stack) {
 	Logger.Debug("Merging stacks: \n%s\n\n%s", s, child)
 	s.Name = child.Name

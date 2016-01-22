@@ -7,17 +7,24 @@ import (
 	"sync"
 	"time"
 
+	marathon "github.com/gambol99/go-marathon"
 	"github.com/gocql/gocql"
 	yaml "gopkg.in/yaml.v2"
 )
 
+type Runner interface {
+	Run(string, marathon.Marathon, StateStorage, int) (*Context, error)
+	GetStack() *Stack
+}
+
 type Storage interface {
 	GetAll() ([]*Stack, error)
 	GetStack(string) (*Stack, error)
+	GetStackRunner(string) (Runner, error)
 	StoreStack(*Stack) error
 	RemoveStack(string, bool) error
 	Init() error
-	GetLayersStack(string) (*Stack, error)
+	GetLayersStack(string) (Merger, error)
 }
 
 type CassandraStorage struct {
@@ -80,6 +87,10 @@ func (cs *CassandraStorage) GetAll() ([]*Stack, error) {
 	return stacks, nil
 }
 
+func (cs *CassandraStorage) GetStackRunner(name string) (Runner, error) {
+	return cs.GetStack(name)
+}
+
 func (cs *CassandraStorage) GetStack(name string) (*Stack, error) {
 	stack := &Stack{}
 	query := fmt.Sprintf(`SELECT name, parent, applications from %s.stacks where name = ? LIMIT 1`, cs.keyspace)
@@ -110,7 +121,7 @@ func (cs *CassandraStorage) GetStack(name string) (*Stack, error) {
 	return stack, nil
 }
 
-func (cs *CassandraStorage) GetLayersStack(name string) (*Stack, error) {
+func (cs *CassandraStorage) GetLayersStack(name string) (Merger, error) {
 	zone, err := cs.GetLayer(name)
 	if err != nil {
 		return nil, err

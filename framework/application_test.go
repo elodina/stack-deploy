@@ -303,8 +303,9 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Application should set the right number of instances", t, func() {
-		Mesos = NewMesosState("")
-		Mesos.ActivatedSlaves = 12
+		Mesos = &MesosState{
+			ActivatedSlaves: 12,
+		}
 		app := new(Application)
 		// 1 is default
 		So(app.getInstances(), ShouldEqual, 1)

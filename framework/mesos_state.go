@@ -23,7 +23,12 @@ import (
 	"sync"
 )
 
-var Mesos *MesosState
+var Mesos MesosStater
+
+type MesosStater interface {
+	Update() error
+	GetActivatedSlaves() float64
+}
 
 //TODO extend this struct when necessary
 type MesosState struct {
@@ -45,6 +50,10 @@ func NewMesosState(master string) *MesosState {
 	return &MesosState{
 		master: master,
 	}
+}
+
+func (ms *MesosState) GetActivatedSlaves() float64 {
+	return ms.ActivatedSlaves
 }
 
 func (ms *MesosState) Update() error {

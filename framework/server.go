@@ -304,7 +304,7 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (ts *StackDeployServer) runStack(name string, zone string, storage Storage, maxAppWait int) (*Context, error) {
-	stack, err := storage.GetStack(name)
+	runner, err := storage.GetStackRunner(name)
 	if err != nil {
 		return nil, err
 	}
@@ -313,12 +313,12 @@ func (ts *StackDeployServer) runStack(name string, zone string, storage Storage,
 		if err != nil {
 			return nil, err
 		}
-		layers.Merge(stack)
-		stack = layers
+		layers.Merge(runner.GetStack())
+		runner = layers.GetRunner()
 	}
 
 	Logger.Info("Running stack %s in zone '%s'", name, zone)
-	return stack.Run(zone, ts.marathonClient, ts.stateStorage, maxAppWait)
+	return runner.Run(zone, ts.marathonClient, ts.stateStorage, maxAppWait)
 }
 
 func layerToInt(layer string) (int, error) {

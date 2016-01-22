@@ -1,15 +1,51 @@
 package framework
 
-import marathon "github.com/gambol99/go-marathon"
+import (
+	"fmt"
+	marathon "github.com/gambol99/go-marathon"
+)
 
 type MockStorage struct{}
 
-func (*MockStorage) GetAll() ([]*Stack, error)             { return make([]*Stack, 0), nil }
-func (*MockStorage) GetStack(string) (*Stack, error)       { return nil, nil }
+func (*MockStorage) GetAll() ([]*Stack, error) {
+	stack := &Stack{
+		Name:  "stack1",
+		Layer: LayerStack,
+	}
+	return []*Stack{stack}, nil
+}
+func (*MockStorage) GetStack(name string) (*Stack, error) {
+	if name != "stack1" {
+		return nil, fmt.Errorf("Stack not found")
+	}
+	stack := &Stack{
+		Name:  "stack1",
+		Layer: LayerStack,
+	}
+	return stack, nil
+}
+
+type FakeStack struct{}
+
+func (*FakeStack) Run(string, marathon.Marathon, StateStorage, int) (*Context, error) {
+	return &Context{}, nil
+}
+func (*FakeStack) GetStack() *Stack {
+	return &Stack{
+		Name:  "stack1",
+		Layer: LayerStack,
+	}
+}
+func (*FakeStack) Merge(*Stack)      {}
+func (*FakeStack) GetRunner() Runner { return &FakeStack{} }
+
+func (ms *MockStorage) GetStackRunner(name string) (Runner, error) {
+	return &FakeStack{}, nil
+}
 func (*MockStorage) StoreStack(*Stack) error               { return nil }
 func (*MockStorage) RemoveStack(string, bool) error        { return nil }
 func (*MockStorage) Init() error                           { return nil }
-func (*MockStorage) GetLayersStack(string) (*Stack, error) { return nil, nil }
+func (*MockStorage) GetLayersStack(string) (Merger, error) { return &FakeStack{}, nil }
 
 type MockUserStorage struct{}
 
@@ -53,3 +89,8 @@ func (m *MockTaskRunner) FillContext(context *Context, application *Application,
 func (m *MockTaskRunner) RunTask(context *Context, application *Application, task map[string]string) error {
 	return m.runErr
 }
+
+type FakeMesos struct{}
+
+func (FakeMesos) Update() error               { return nil }
+func (FakeMesos) GetActivatedSlaves() float64 { return 0 }
