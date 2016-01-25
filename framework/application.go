@@ -1,7 +1,6 @@
 package framework
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -12,6 +11,7 @@ import (
 
 	marathon "github.com/gambol99/go-marathon"
 	yaml "gopkg.in/yaml.v2"
+	"io"
 	"strconv"
 )
 
@@ -22,6 +22,10 @@ const (
 	StateRunning
 	StateFail
 )
+
+// exposed for testing purposes
+var stdout io.Writer = os.Stdout
+var applicationAwaitBackoff = time.Second
 
 var variableRegexp = regexp.MustCompile("\\$\\{.*\\}")
 
@@ -54,36 +58,37 @@ type Application struct {
 
 func (a *Application) Validate() error {
 	if a.Type == "" {
-		return errors.New("No type")
+		return ErrApplicationNoType
 	}
 
 	if len(a.Tasks) > 0 {
 		_, ok := TaskRunners[a.Type]
 		if !ok {
-			return fmt.Errorf("No task runner available for application type %s", a.Type)
+			Logger.Info("%s: %s", ErrApplicationNoTaskRunner, a.Type)
+			return ErrApplicationNoTaskRunner
 		}
 	}
 
 	if a.ID == "" {
-		return errors.New("No ID")
+		return ErrApplicationNoID
 	}
 
-	if a.Cpu == 0.0 {
-		return errors.New("CPU cannot be 0.0")
+	if a.Cpu <= 0.0 {
+		return ErrApplicationInvalidCPU
 	}
 
-	if a.Mem == 0.0 {
-		return errors.New("Mem cannot be 0.0")
+	if a.Mem <= 0.0 {
+		return ErrApplicationInvalidMem
 	}
 
 	if a.LaunchCommand == "" {
-		return errors.New("No launch command")
+		return ErrApplicationNoLaunchCommand
 	}
 
 	if a.Instances != "" && a.Instances != "all" {
 		instances, err := strconv.Atoi(a.Instances)
 		if err != nil || instances < 1 {
-			return errors.New("Invalid number of instances: supported are numbers greater than zero and 'all'")
+			return ErrApplicationInvalidInstances
 		}
 	}
 
@@ -102,11 +107,11 @@ func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationSt
 	return true
 }
 
-func (a *Application) Run(context *Context, client marathon.Marathon, stateStorage StateStorage) error {
+func (a *Application) Run(context *Context, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
 	Logger.Debug("Running application: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
-	err := a.ensureResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
+	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
 	if err != nil {
 		return err
 	}
@@ -121,13 +126,13 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 		return err
 	}
 
-	err = a.awaitRunningAndHealthy(client, 120, 5*time.Second) //TODO configurable
+	err = a.awaitRunningAndHealthy(client, maxWait)
 	if err != nil {
 		return err
 	}
 
 	a.resolveVariables(context)
-	err = a.ensureResolved(context, a.AfterScheduler)
+	err = ensureVariablesResolved(context, a.AfterScheduler)
 	if err != nil {
 		return err
 	}
@@ -146,7 +151,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 
 		for _, task := range a.Tasks {
 			a.resolveVariables(context)
-			err = a.ensureResolved(context, a.BeforeTask, task)
+			err = ensureVariablesResolved(context, a.BeforeTask, task)
 			if err != nil {
 				return err
 			}
@@ -162,7 +167,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 			}
 
 			a.resolveVariables(context)
-			err = a.ensureResolved(context, a.AfterTask)
+			err = ensureVariablesResolved(context, a.AfterTask)
 			if err != nil {
 				return err
 			}
@@ -176,7 +181,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 	}
 
 	a.resolveVariables(context)
-	err = a.ensureResolved(context, a.AfterTasks)
+	err = ensureVariablesResolved(context, a.AfterTasks)
 	if err != nil {
 		return err
 	}
@@ -198,57 +203,18 @@ func (a *Application) resolveVariables(context *Context) {
 			a.Scheduler[schedulerKey] = strings.Replace(schedulerValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
 		for _, taskSlice := range a.Tasks {
-			for _, task := range taskSlice.Value.(yaml.MapSlice) {
-				task.Value = strings.Replace(fmt.Sprint(task.Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+			tasks := taskSlice.Value.(yaml.MapSlice)
+			for i := 0; i < len(tasks); i++ {
+				tasks[i].Value = strings.Replace(fmt.Sprint(tasks[i].Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 			}
 		}
 
-		a.resolveCmdVariables(a.BeforeScheduler)
-		a.resolveCmdVariables(a.AfterScheduler)
-		a.resolveCmdVariables(a.BeforeTask)
-		a.resolveCmdVariables(a.AfterTask)
-		a.resolveCmdVariables(a.AfterTasks)
+		a.resolveCmdVariables(a.BeforeScheduler, context)
+		a.resolveCmdVariables(a.AfterScheduler, context)
+		a.resolveCmdVariables(a.BeforeTask, context)
+		a.resolveCmdVariables(a.AfterTask, context)
+		a.resolveCmdVariables(a.AfterTasks, context)
 	}
-}
-
-func (a *Application) ensureResolved(context *Context, values ...interface{}) error {
-	for _, value := range values {
-		switch v := value.(type) {
-		case string:
-			{
-				if err := a.ensureResolvedString(context, v); err != nil {
-					return err
-				}
-			}
-		case map[string]string:
-			{
-				for _, val := range v {
-					if err := a.ensureResolvedString(context, val); err != nil {
-						return err
-					}
-				}
-			}
-		case yaml.MapSlice:
-			{
-				for _, m := range v {
-					if err := a.ensureResolvedString(context, m.Value.(string)); err != nil {
-						return err
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (a *Application) ensureResolvedString(context *Context, value string) error {
-	unresolved := variableRegexp.FindString(value)
-	if unresolved != "" {
-		return fmt.Errorf("Unresolved variable %s. Available variables:\n%s", unresolved, context)
-	}
-
-	return nil
 }
 
 func (a *Application) executeCommands(commands []string, fileName string) error {
@@ -265,14 +231,16 @@ func (a *Application) executeCommands(commands []string, fileName string) error 
 	defer os.Remove(fileName)
 
 	cmd := exec.Command("sh", fileName)
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
-func (a *Application) resolveCmdVariables(commands []string) {
-	for idx, cmd := range commands {
-		commands[idx] = strings.Replace(cmd, fmt.Sprintf("${%s}", fmt.Sprint(idx)), fmt.Sprint(cmd), -1)
+func (a *Application) resolveCmdVariables(commands []string, context *Context) {
+	for k, v := range context.All() {
+		for idx, cmd := range commands {
+			commands[idx] = strings.Replace(cmd, fmt.Sprintf("${%s}", k), v, -1)
+		}
 	}
 }
 
@@ -282,21 +250,21 @@ func (a *Application) fillContext(context *Context, runner TaskRunner, client ma
 		return err
 	}
 
-	if len(tasks.Tasks) == 0 {
-		return errors.New("No tasks are running?")
+	if tasks == nil || len(tasks.Tasks) == 0 {
+		return ErrTaskNotRunning
 	}
 
 	return runner.FillContext(context, a, tasks.Tasks[0])
 }
 
-func (a *Application) awaitRunningAndHealthy(client marathon.Marathon, retries int, backoff time.Duration) error {
+func (a *Application) awaitRunningAndHealthy(client marathon.Marathon, retries int) error {
 	for i := 0; i <= retries; i++ {
 		err := a.checkRunningAndHealthy(client)
 		if err == nil {
 			return nil
 		}
 
-		time.Sleep(backoff)
+		time.Sleep(applicationAwaitBackoff)
 	}
 	return fmt.Errorf("Failed to await until the task is running and healthy within %d retries", retries)
 }
@@ -307,12 +275,16 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 		return err
 	}
 
+	if app == nil {
+		return ErrApplicationDoesNotExist
+	}
+
 	if app.TasksRunning == 0 {
-		return errors.New("Task is not yet running")
+		return ErrTaskNotRunning
 	}
 
 	if a.Healthcheck != "" && app.TasksHealthy == 0 {
-		return errors.New("Task healthcheck is not yet passing")
+		return ErrHealthcheckNotPassing
 	}
 
 	return nil
@@ -325,7 +297,7 @@ func (a *Application) createApplication() *marathon.Application {
 		Instances:    a.getInstances(),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
-		Ports:        a.getPorts(),
+		Ports:        a.Ports,
 		RequirePorts: len(a.Ports) > 0,
 		Uris:         append(a.ArtifactURLs, a.AdditionalArtifacts...),
 		User:         a.User,
@@ -350,7 +322,7 @@ func (a *Application) getInstances() int {
 	}
 
 	if a.Instances == "all" {
-		return int(Mesos.ActivatedSlaves)
+		return int(Mesos.GetActivatedSlaves())
 	}
 
 	instances, err := strconv.Atoi(a.Instances)
@@ -360,14 +332,6 @@ func (a *Application) getInstances() int {
 	}
 
 	return instances
-}
-
-func (a *Application) getPorts() []int {
-	if len(a.Ports) > 0 {
-		return a.Ports
-	}
-
-	return nil
 }
 
 func (a *Application) getHealthchecks() []*marathon.HealthCheck {
@@ -395,4 +359,52 @@ func (a *Application) String() string {
 	}
 
 	return string(yml)
+}
+
+func ensureVariablesResolved(context *Context, values ...interface{}) error {
+	for _, value := range values {
+		switch v := value.(type) {
+		case string:
+			{
+				if err := ensureStringVariableResolved(context, v); err != nil {
+					return err
+				}
+			}
+		case []string:
+			{
+				for _, val := range v {
+					if err := ensureStringVariableResolved(context, val); err != nil {
+						return err
+					}
+				}
+			}
+		case map[string]string:
+			{
+				for _, val := range v {
+					if err := ensureStringVariableResolved(context, val); err != nil {
+						return err
+					}
+				}
+			}
+		case yaml.MapSlice:
+			{
+				for _, m := range v {
+					if err := ensureVariablesResolved(context, m.Value); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func ensureStringVariableResolved(context *Context, value string) error {
+	unresolved := variableRegexp.FindString(value)
+	if unresolved != "" {
+		return fmt.Errorf("Unresolved variable %s. Available variables:\n%s", unresolved, context)
+	}
+
+	return nil
 }

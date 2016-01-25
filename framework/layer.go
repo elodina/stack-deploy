@@ -14,6 +14,11 @@ type Layer struct {
 	Stack *Stack
 }
 
+type Merger interface {
+	Merge(*Stack)
+	GetRunner() Runner
+}
+
 func NewLayer(stack *Stack) *Layer {
 	switch stack.Layer {
 	case LayerZone:

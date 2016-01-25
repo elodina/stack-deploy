@@ -23,7 +23,12 @@ import (
 	"sync"
 )
 
-var Mesos *MesosState
+var Mesos MesosStater
+
+type MesosStater interface {
+	Update() error
+	GetActivatedSlaves() float64
+}
 
 //TODO extend this struct when necessary
 type MesosState struct {
@@ -33,7 +38,7 @@ type MesosState struct {
 	lock   sync.Mutex
 }
 
-func NewMesosState(master string) (*MesosState, error) {
+func NewMesosState(master string) *MesosState {
 	if !strings.HasPrefix(master, "http://") {
 		master = "http://" + master
 	}
@@ -42,11 +47,13 @@ func NewMesosState(master string) (*MesosState, error) {
 		master = master[:len(master)-1]
 	}
 
-	state := &MesosState{
+	return &MesosState{
 		master: master,
 	}
+}
 
-	return state, state.Update()
+func (ms *MesosState) GetActivatedSlaves() float64 {
+	return ms.ActivatedSlaves
 }
 
 func (ms *MesosState) Update() error {

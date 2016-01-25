@@ -67,8 +67,8 @@ func (sc *ServerCommand) Run(args []string) int {
 
 	framework.TaskRunners = sc.runners
 
-	var err error
-	framework.Mesos, err = framework.NewMesosState(*masterURL)
+	framework.Mesos = framework.NewMesosState(*masterURL)
+	err := framework.Mesos.Update()
 	if err != nil {
 		Logger.Critical("%s", err)
 		return 1
@@ -136,7 +136,7 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 	var context *framework.Context
 	bootstrapZone := ""
 	for i := 0; i < retries; i++ {
-		context, err = stack.Run(bootstrapZone, marathonClient, nil)
+		context, err = stack.Run(bootstrapZone, marathonClient, nil, defaultApplicationMaxWait)
 		if err == nil {
 			return context, err
 		}

@@ -84,14 +84,14 @@ func (ts *StackDeployServer) Auth(handler http.HandlerFunc) http.HandlerFunc {
 // Middleware for admin role check
 func (ts *StackDeployServer) Admin(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user := r.Header.Get("X-User-Name")
+		user := r.Header.Get("X-Api-User")
 		admin, err := ts.userStorage.IsAdmin(user)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if !admin {
-			http.Error(w, "User is not an admin", http.StatusForbidden)
+			http.Error(w, fmt.Sprintf("User %s is not an admin", user), http.StatusForbidden)
 			return
 		}
 		handler(w, r)
@@ -155,8 +155,9 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
 	runRequest := struct {
-		Name string `json:"name"`
-		Zone string `json:"zone"`
+		Name    string `json:"name"`
+		Zone    string `json:"zone"`
+		MaxWait int    `json:"maxwait"`
 	}{}
 	decoder.Decode(&runRequest)
 	stackName := runRequest.Name
@@ -171,7 +172,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		_, err = ts.runStack(stackName, runRequest.Zone, ts.storage)
+		_, err = ts.runStack(stackName, runRequest.Zone, ts.storage, runRequest.MaxWait)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -276,7 +277,7 @@ func (ts *StackDeployServer) CreateUserHandler(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(key))
 }
 
@@ -302,8 +303,8 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(name string, zone string, storage Storage) (*Context, error) {
-	stack, err := storage.GetStack(name)
+func (ts *StackDeployServer) runStack(name string, zone string, storage Storage, maxAppWait int) (*Context, error) {
+	runner, err := storage.GetStackRunner(name)
 	if err != nil {
 		return nil, err
 	}
@@ -312,12 +313,12 @@ func (ts *StackDeployServer) runStack(name string, zone string, storage Storage)
 		if err != nil {
 			return nil, err
 		}
-		layers.Merge(stack)
-		stack = layers
+		layers.Merge(runner.GetStack())
+		runner = layers.GetRunner()
 	}
 
 	Logger.Info("Running stack %s in zone '%s'", name, zone)
-	return stack.Run(zone, ts.marathonClient, ts.stateStorage)
+	return runner.Run(zone, ts.marathonClient, ts.stateStorage, maxAppWait)
 }
 
 func layerToInt(layer string) (int, error) {
