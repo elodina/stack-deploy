@@ -1,9 +1,6 @@
 {
 	"ImportPath": "github.com/elodina/stack-deploy",
 	"GoVersion": "go1.5.1",
-	"Packages": [
-		"./..."
-	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/donovanhide/eventsource",
@@ -15,7 +12,7 @@
 		},
 		{
 			"ImportPath": "github.com/gambol99/go-marathon",
-			"Rev": "acc2629d70da6ad42811a4f72fe53dde1d0a57d7"
+			"Rev": "cf59c40a70e4dd1b8e191cf2f350fbf30696ae9a"
 		},
 		{
 			"ImportPath": "github.com/gocql/gocql",
