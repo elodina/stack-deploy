@@ -27,6 +27,7 @@ type CreateStackRequest struct {
 type CreateLayerRequest struct {
 	Stackfile string `json:"stackfile"`
 	Layer     string `json:"layer"`
+	Parent    string `json:"parent"`
 }
 
 func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage, userStorage UserStorage, stateStorage StateStorage) *StackDeployServer {
@@ -224,6 +225,7 @@ func (ts *StackDeployServer) CreateLayerHandler(w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	stack.From = request.Parent
 	err = ts.storage.StoreStack(stack)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

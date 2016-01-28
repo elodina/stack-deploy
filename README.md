@@ -234,7 +234,7 @@ Running stacks
 
 To run a stack run the following command:
 
-    # ./stack-deploy run dev.kafka-mesos
+    # ./stack-deploy run dev.kafka-mesos --zone us-east-1
 
 This call will block until the stack successfully deploys or an error occurs.
 You can also pass an `--api` flag to specify the address of stack-deploy server. By default it assumes stack-deploy is running on `127.0.0.1:4200`.
@@ -276,4 +276,15 @@ To manage users you have to be an admin
 ```
   POST /createuser
   POST /refreshtoken
+```
+
+### Layers
+Stack-deploy has 3-leveled layers system. You can create zones, clusters and data centers. Then you can launch you stacks in different zones.
+```
+POST /createlayer
+{
+  "layer": "zone", // "zone", "cluster" or "datacenter"
+  "parent": "devcluster", // name of cluster to create zone in
+  "stackfile": "<zone options here>", // zone-specifig application settings
+}
 ```
