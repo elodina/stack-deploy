@@ -1,6 +1,6 @@
 #!/bin/sh
 
-docker-compose kill
+docker-compose kill -s SIGTERM
 docker-compose rm -f
 GOOS=linux go build
 docker-compose build

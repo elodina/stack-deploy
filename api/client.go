@@ -111,6 +111,15 @@ func (c *Client) CreateStack(stackData string) error {
 	return err
 }
 
+func (c *Client) CreateLayer(stackData string, level string, parent string) error {
+	request := apiRequest{
+		url:  "/createlayer",
+		data: requestData{"stackfile": stackData, "layer": level, "parent": parent},
+	}
+	_, err := c.request(request)
+	return err
+}
+
 func (c *Client) RemoveStack(name string, force bool) error {
 	request := apiRequest{
 		url:  "/removestack",
