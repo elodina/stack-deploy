@@ -53,6 +53,9 @@ func commands() map[string]cli.CommandFactory {
 		"refreshtoken": func() (cli.Command, error) {
 			return new(command.RefreshTokenCommand), nil
 		},
+		"addlayer": func() (cli.Command, error) {
+			return new(command.AddLayerCommand), nil
+		},
 	}
 }
 

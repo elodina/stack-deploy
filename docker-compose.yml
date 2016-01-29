@@ -29,7 +29,6 @@ mesos-slave:
     - MESOS_LOGGING_LEVEL=INFO
   links:
     - zookeeper
-    - cassandra
 marathon:
   image: mesoscloud/marathon
   hostname: marathon
@@ -51,7 +50,7 @@ cassandra:
     - "9042:9042"
 stack-deploy:
   build: .
-  command: stack-deploy server --marathon http://marathon:8080 --cassandra cassandra --master mesos-master:5050 --debug
+  command: stack-deploy server --marathon http://marathon:8080 --cassandra=cassandra:9042 --master mesos-master:5050 --debug
   ports:
     - "4200:4200"
   links:

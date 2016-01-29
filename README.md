@@ -250,6 +250,18 @@ Minimal stack examples
 
 Minimal stack examples are located in `stacks` directory in this repository.
 
+Example Usage
+-------------
+```
+./stack-deploy addlayer --file stacks/cassandra_dc.stack --level datacenter
+./stack-deploy addlayer --file stacks/cassandra_cluster.stack --level cluster --parent cassandra_dc
+./stack-deploy addlayer --file stacks/cassandra_zone1.stack --level zone --parent cassandra_cluster
+./stack-deploy addlayer --file stacks/cassandra_zone2.stack --level zone --parent cassandra_cluster
+./stack-deploy add --file stacks/cassandra.stack
+./stack-deploy run cassandra --zone cassandra_zone1
+```
+
+
 API
 ----
 
