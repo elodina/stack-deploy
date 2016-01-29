@@ -13,6 +13,25 @@ type StateStorage interface {
 	GetStackState(string) (map[string]ApplicationState, error)
 }
 
+// NoopStateStorage does nothing and is used during bootstrapping when the real state storage is not yet available
+type NoopStateStorage struct{}
+
+func (*NoopStateStorage) SaveTaskState(map[string]string, map[string]string, ApplicationState) error {
+	return nil
+}
+
+func (*NoopStateStorage) SaveApplicationState(string, string, ApplicationState) error {
+	return nil
+}
+
+func (*NoopStateStorage) SaveStackState(string, ApplicationState) error {
+	return nil
+}
+
+func (*NoopStateStorage) GetStackState(string) (map[string]ApplicationState, error) {
+	return make(map[string]ApplicationState), nil
+}
+
 type CassandraStateStorage struct {
 	connection *gocql.Session
 	keyspace   string
