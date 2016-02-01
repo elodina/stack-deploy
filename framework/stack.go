@@ -75,6 +75,9 @@ func (s *Stack) Merge(child *Stack) {
 				continue
 			}
 
+			if app.Scheduler == nil {
+				app.Scheduler = make(map[string]string)
+			}
 			app.Scheduler[k] = v
 		}
 		if len(childApp.Tasks) > 0 {

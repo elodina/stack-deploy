@@ -50,6 +50,7 @@ cassandra:
     - "9042:9042"
 stack-deploy:
   build: .
+  restart: on-failure
   command: stack-deploy server --marathon http://marathon:8080 --cassandra=cassandra:9042 --master mesos-master:5050 --debug
   ports:
     - "4200:4200"
