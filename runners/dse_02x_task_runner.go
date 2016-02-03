@@ -137,7 +137,9 @@ func (dmc *DSEMesos02xClient) checkResponse(rawResponse *http.Response) ([]byte,
 	err = json.Unmarshal(body, &errorResponse)
 	if err == nil {
 		if errorMessage, ok := errorResponse["error"].(string); ok {
-			return nil, errors.New(errorMessage)
+			if !strings.Contains(errorMessage, "duplicate cluster") {
+				return nil, errors.New(errorMessage)
+			}
 		}
 	}
 
