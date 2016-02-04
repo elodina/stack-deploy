@@ -79,7 +79,7 @@ func (dtr *DSE02xTaskRunner) fillTaskContext(context *framework.Context, applica
 		context.Set(fmt.Sprintf("%s.cassandra-%s", application.ID, fmt.Sprint(node.ID)), nodeEndpoint)
 		context.Set(fmt.Sprintf("%s.cassandra-%s.host", application.ID, fmt.Sprint(node.ID)), node.Runtime.Address)
 		for name, port := range node.Runtime.Reservation.Ports {
-			context.Set(fmt.Sprintf("%s.cassandra-%s.%sPort", application.ID, fmt.Sprint(node.ID), name), port)
+			context.Set(fmt.Sprintf("%s.cassandra-%s.%sPort", application.ID, fmt.Sprint(node.ID), name), fmt.Sprint(port))
 		}
 
 		servers = append(servers, nodeEndpoint)
