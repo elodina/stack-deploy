@@ -203,9 +203,11 @@ func (a *Application) resolveVariables(context *Context) {
 			a.Scheduler[schedulerKey] = strings.Replace(schedulerValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
 		for _, taskSlice := range a.Tasks {
-			tasks := taskSlice.Value.(yaml.MapSlice)
-			for i := 0; i < len(tasks); i++ {
-				tasks[i].Value = strings.Replace(fmt.Sprint(tasks[i].Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+			if taskSlice.Value != nil {
+				tasks := taskSlice.Value.(yaml.MapSlice)
+				for i := 0; i < len(tasks); i++ {
+					tasks[i].Value = strings.Replace(fmt.Sprint(tasks[i].Value), fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+				}
 			}
 		}
 
