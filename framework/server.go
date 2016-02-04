@@ -158,9 +158,10 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 	runRequest := struct {
 		Name    string `json:"name"`
 		Zone    string `json:"zone"`
-		MaxWait int    `json:"maxwait"`
+		MaxWait int    `json:"maxwait,string"`
 	}{}
 	decoder.Decode(&runRequest)
+	Logger.Debug("Run request: %#v", runRequest)
 	stackName := runRequest.Name
 	if stackName == "" {
 		http.Error(w, "Stack name required", http.StatusBadRequest)
