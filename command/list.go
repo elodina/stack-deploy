@@ -21,7 +21,7 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type ListCommand struct{}

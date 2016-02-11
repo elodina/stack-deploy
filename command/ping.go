@@ -5,7 +5,7 @@ import (
 
 	"fmt"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type PingCommand struct{}

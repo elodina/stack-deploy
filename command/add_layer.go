@@ -6,7 +6,7 @@ import (
 
 	"fmt"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type AddLayerCommand struct{}
@@ -33,7 +33,11 @@ func (asc *AddLayerCommand) Run(args []string) int {
 		fmt.Printf("Can't read file %s\n", *stackFile)
 		return 1
 	}
-	err = client.CreateLayer(string(stack), *level, *parent)
+	err = client.CreateLayer(&api.CreateLayerRequest{
+		Stackfile: string(stack),
+		Layer:     *level,
+		Parent:    *parent,
+	})
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		return 1

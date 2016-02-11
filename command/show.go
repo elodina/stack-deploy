@@ -20,7 +20,7 @@ import (
 
 	"flag"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type ShowCommand struct{}
@@ -46,7 +46,9 @@ func (sc *ShowCommand) Run(args []string) int {
 	}
 	client := api.NewClient(stackDeployApi)
 
-	stack, err := client.GetStack(name)
+	stack, err := client.GetStack(&api.GetStackRequest{
+		Name: name,
+	})
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		return 1

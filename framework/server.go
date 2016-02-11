@@ -19,16 +19,6 @@ type StackDeployServer struct {
 	userStorage    UserStorage
 }
 
-type CreateStackRequest struct {
-	Stackfile string `json:"stackfile"`
-}
-
-type CreateLayerRequest struct {
-	Stackfile string `json:"stackfile"`
-	Layer     string `json:"layer"`
-	Parent    string `json:"parent"`
-}
-
 func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage, userStorage UserStorage, stateStorage StateStorage) *StackDeployServer {
 	if strings.HasPrefix(api, "http://") {
 		api = api[len("http://"):]
@@ -126,9 +116,7 @@ func (ts *StackDeployServer) GetStackHandler(w http.ResponseWriter, r *http.Requ
 	Logger.Debug("Received get stack command")
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
-	getRequest := struct {
-		Name string `json:"name"`
-	}{}
+	getRequest := new(GetStackRequest)
 	decoder.Decode(&getRequest)
 	if getRequest.Name == "" {
 		http.Error(w, "Stack name required", http.StatusBadRequest)
@@ -154,12 +142,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 	Logger.Debug("Received run command")
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
-	runRequest := struct {
-		Name      string            `json:"name"`
-		Zone      string            `json:"zone"`
-		MaxWait   int               `json:"maxwait"`
-		Variables map[string]string `json:"variables"`
-	}{}
+	runRequest := new(RunRequest)
 	decoder.Decode(&runRequest)
 	Logger.Debug("Run request: %#v", runRequest)
 	stackName := runRequest.Name
@@ -193,7 +176,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 func (ts *StackDeployServer) CreateStackHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
-	request := &CreateStackRequest{}
+	request := new(CreateStackRequest)
 	err := decoder.Decode(&request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -216,7 +199,7 @@ func (ts *StackDeployServer) CreateStackHandler(w http.ResponseWriter, r *http.R
 func (ts *StackDeployServer) CreateLayerHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
-	request := &CreateLayerRequest{}
+	request := new(CreateLayerRequest)
 	err := decoder.Decode(&request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -245,10 +228,7 @@ func (ts *StackDeployServer) RemoveStackHandler(w http.ResponseWriter, r *http.R
 	Logger.Debug("Received remove command")
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
-	removeRequest := struct {
-		Name  string `json:"name"`
-		Force bool   `json:"force"`
-	}{}
+	removeRequest := new(RemoveStackRequest)
 	decoder.Decode(&removeRequest)
 
 	stackName := removeRequest.Name

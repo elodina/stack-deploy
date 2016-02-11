@@ -6,7 +6,7 @@ import (
 
 	"fmt"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type AddStackCommand struct{}
@@ -31,7 +31,9 @@ func (asc *AddStackCommand) Run(args []string) int {
 		fmt.Printf("Can't read file %s\n", *stackFile)
 		return 1
 	}
-	err = client.CreateStack(string(stack))
+	err = client.CreateStack(&api.CreateStackRequest{
+		Stackfile: string(stack),
+	})
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		return 1

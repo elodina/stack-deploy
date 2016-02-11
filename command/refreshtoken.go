@@ -5,7 +5,7 @@ import (
 
 	"fmt"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type RefreshTokenCommand struct{}
@@ -25,7 +25,9 @@ func (*RefreshTokenCommand) Run(args []string) int {
 	}
 
 	client := api.NewClient(stackDeployApi)
-	key, err := client.RefreshToken(*name)
+	key, err := client.RefreshToken(&api.RefreshTokenRequest{
+		Name: *name,
+	})
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		return 1
