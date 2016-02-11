@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 
 	marathon "github.com/gambol99/go-marathon"
@@ -156,9 +155,10 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
 	runRequest := struct {
-		Name    string `json:"name"`
-		Zone    string `json:"zone"`
-		MaxWait int    `json:"maxwait,string"`
+		Name      string            `json:"name"`
+		Zone      string            `json:"zone"`
+		MaxWait   int               `json:"maxwait"`
+		Variables map[string]string `json:"variables"`
 	}{}
 	decoder.Decode(&runRequest)
 	Logger.Debug("Run request: %#v", runRequest)
@@ -174,7 +174,13 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		_, err = ts.runStack(stackName, runRequest.Zone, ts.storage, runRequest.MaxWait)
+
+		context := NewContext()
+		for varName, varValue := range runRequest.Variables {
+			context.Set(varName, varValue)
+		}
+
+		_, err = ts.runStack(stackName, context, runRequest.Zone, ts.storage, runRequest.MaxWait)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -241,22 +247,16 @@ func (ts *StackDeployServer) RemoveStackHandler(w http.ResponseWriter, r *http.R
 	decoder := json.NewDecoder(r.Body)
 	removeRequest := struct {
 		Name  string `json:"name"`
-		Force string `json:"force"`
+		Force bool   `json:"force"`
 	}{}
 	decoder.Decode(&removeRequest)
-	force, err := strconv.ParseBool(removeRequest.Force)
-	if err != nil {
-		Logger.Info("Invalid force flag value: %s", removeRequest.Force)
-		http.Error(w, "Invalid force flag value", http.StatusBadRequest)
-		return
-	}
 
 	stackName := removeRequest.Name
 	if stackName == "" {
 		http.Error(w, "Stack name required", http.StatusBadRequest)
 		return
 	} else {
-		err := ts.storage.RemoveStack(stackName, force)
+		err := ts.storage.RemoveStack(stackName, removeRequest.Force)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -306,7 +306,7 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(name string, zone string, storage Storage, maxAppWait int) (*Context, error) {
+func (ts *StackDeployServer) runStack(name string, context *Context, zone string, storage Storage, maxAppWait int) (*Context, error) {
 	runner, err := storage.GetStackRunner(name)
 	if err != nil {
 		return nil, err
@@ -320,8 +320,8 @@ func (ts *StackDeployServer) runStack(name string, zone string, storage Storage,
 		runner = layers.GetRunner()
 	}
 
-	Logger.Info("Running stack %s in zone '%s'", name, zone)
-	return runner.Run(zone, ts.marathonClient, ts.stateStorage, maxAppWait)
+	Logger.Info("Running stack %s in zone '%s' and context %s", name, zone, context)
+	return runner.Run(context, zone, ts.marathonClient, ts.stateStorage, maxAppWait)
 }
 
 func layerToInt(layer string) (int, error) {

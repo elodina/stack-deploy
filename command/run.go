@@ -6,10 +6,35 @@ import (
 	"flag"
 	"time"
 
+	"errors"
 	"github.com/elodina/stack-deploy/api"
+	"strings"
 )
 
 const defaultApplicationMaxWait = 600 // 10 minutes
+
+type vars map[string]string
+
+func (v vars) String() string {
+	stringVars := make([]string, len(v))
+	idx := 0
+	for k, v := range v {
+		stringVars[idx] = fmt.Sprintf("%s=%s", k, v)
+		idx++
+	}
+
+	return strings.Join(stringVars, ", ")
+}
+
+func (v vars) Set(value string) error {
+	kv := strings.SplitN(value, "=", 2)
+	if len(kv) != 2 {
+		return errors.New("Variables are expected in k=v format.")
+	}
+
+	v[kv[0]] = kv[1]
+	return nil
+}
 
 type RunCommand struct{}
 
@@ -20,11 +45,13 @@ func (rc *RunCommand) Run(args []string) int {
 	}
 
 	var (
-		flags   = flag.NewFlagSet("run", flag.ExitOnError)
-		apiUrl  = flags.String("api", "", "Stack-deploy server address.")
-		zone    = flags.String("zone", "", "Zone to run stack.")
-		maxWait = flags.Int("max.wait", defaultApplicationMaxWait, "Maximum time to wait for each application in a stack to become running and healthy.")
+		flags     = flag.NewFlagSet("run", flag.ExitOnError)
+		apiUrl    = flags.String("api", "", "Stack-deploy server address.")
+		zone      = flags.String("zone", "", "Zone to run stack.")
+		maxWait   = flags.Int("max.wait", defaultApplicationMaxWait, "Maximum time to wait for each application in a stack to become running and healthy.")
+		variables = make(vars)
 	)
+	flags.Var(variables, "var", "Arbitrary variables to add to stack context")
 	flags.Parse(args[1:])
 
 	name := args[0]
@@ -37,7 +64,7 @@ func (rc *RunCommand) Run(args []string) int {
 
 	fmt.Printf("Running stack %s\n", name)
 	start := time.Now()
-	err = client.Run(name, *zone, *maxWait)
+	err = client.Run(name, *zone, *maxWait, variables)
 	if err != nil {
 		fmt.Printf("ERROR running client request: %s\n", err)
 		return 1

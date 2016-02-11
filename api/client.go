@@ -17,11 +17,9 @@ import (
 
 var Logger = log.NewDefaultLogger()
 
-type requestData map[string]string
-
 type apiRequest struct {
 	url  string
-	data map[string]string
+	data map[string]interface{}
 }
 
 type Client struct {
@@ -45,7 +43,7 @@ func NewClient(host string) *Client {
 func (c *Client) Ping() error {
 	request := apiRequest{
 		url:  "/health",
-		data: requestData{},
+		data: make(map[string]interface{}),
 	}
 	_, err := c.request(request)
 	if err != nil {
@@ -58,7 +56,7 @@ func (c *Client) Ping() error {
 func (c *Client) List() ([]string, error) {
 	request := apiRequest{
 		url:  "/list",
-		data: requestData{},
+		data: make(map[string]interface{}),
 	}
 	content, err := c.request(request)
 	if err != nil {
@@ -77,7 +75,7 @@ func (c *Client) List() ([]string, error) {
 func (c *Client) GetStack(name string) (*framework.Stack, error) {
 	request := apiRequest{
 		url:  "/get",
-		data: requestData{"name": name},
+		data: map[string]interface{}{"name": name},
 	}
 	content, err := c.request(request)
 	if err != nil {
@@ -93,10 +91,10 @@ func (c *Client) GetStack(name string) (*framework.Stack, error) {
 	return stack, err
 }
 
-func (c *Client) Run(name string, zone string, maxWait int) error {
+func (c *Client) Run(name string, zone string, maxWait int, variables map[string]string) error {
 	request := apiRequest{
 		url:  "/run",
-		data: requestData{"name": name, "zone": zone, "maxwait": fmt.Sprint(maxWait)},
+		data: map[string]interface{}{"name": name, "zone": zone, "maxwait": maxWait, "variables": variables},
 	}
 	_, err := c.request(request)
 	return err
@@ -105,7 +103,7 @@ func (c *Client) Run(name string, zone string, maxWait int) error {
 func (c *Client) CreateStack(stackData string) error {
 	request := apiRequest{
 		url:  "/createstack",
-		data: requestData{"stackfile": stackData},
+		data: map[string]interface{}{"stackfile": stackData},
 	}
 	_, err := c.request(request)
 	return err
@@ -114,7 +112,7 @@ func (c *Client) CreateStack(stackData string) error {
 func (c *Client) CreateLayer(stackData string, level string, parent string) error {
 	request := apiRequest{
 		url:  "/createlayer",
-		data: requestData{"stackfile": stackData, "layer": level, "parent": parent},
+		data: map[string]interface{}{"stackfile": stackData, "layer": level, "parent": parent},
 	}
 	_, err := c.request(request)
 	return err
@@ -123,7 +121,7 @@ func (c *Client) CreateLayer(stackData string, level string, parent string) erro
 func (c *Client) RemoveStack(name string, force bool) error {
 	request := apiRequest{
 		url:  "/removestack",
-		data: requestData{"name": name, "force": fmt.Sprint(force)},
+		data: map[string]interface{}{"name": name, "force": force},
 	}
 	_, err := c.request(request)
 	return err
@@ -136,7 +134,7 @@ func (c *Client) CreateUser(name string, admin bool) (string, error) {
 	}
 	request := apiRequest{
 		url:  "/createuser",
-		data: requestData{"name": name, "role": role},
+		data: map[string]interface{}{"name": name, "role": role},
 	}
 	resp, err := c.request(request)
 	if err != nil {
@@ -148,7 +146,7 @@ func (c *Client) CreateUser(name string, admin bool) (string, error) {
 func (c *Client) RefreshToken(name string) (string, error) {
 	request := apiRequest{
 		url:  "/refreshtoken",
-		data: requestData{"name": name},
+		data: map[string]interface{}{"name": name},
 	}
 	resp, err := c.request(request)
 	if err != nil {
