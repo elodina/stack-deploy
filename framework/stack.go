@@ -114,14 +114,13 @@ func (s *Stack) Validate() error {
 	return nil
 }
 
-func (s *Stack) Run(zone string, client marathon.Marathon, stateStorage StateStorage, maxAppWait int) (*Context, error) {
+func (s *Stack) Run(context *Context, zone string, client marathon.Marathon, stateStorage StateStorage, maxAppWait int) (*Context, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
 	s.stateStorage = stateStorage
 
 	runningApps := make(map[string]ApplicationState)
-	context := NewContext()
 	statuses := make(chan *applicationRunStatus, len(s.Applications))
 
 	info, err := client.Info()

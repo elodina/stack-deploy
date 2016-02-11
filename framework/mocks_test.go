@@ -27,7 +27,7 @@ func (*MockStorage) GetStack(name string) (*Stack, error) {
 
 type FakeStack struct{}
 
-func (*FakeStack) Run(string, marathon.Marathon, StateStorage, int) (*Context, error) {
+func (*FakeStack) Run(*Context, string, marathon.Marathon, StateStorage, int) (*Context, error) {
 	return &Context{}, nil
 }
 func (*FakeStack) GetStack() *Stack {
