@@ -136,7 +136,10 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 	var context *framework.Context
 	bootstrapZone := ""
 	for i := 0; i < retries; i++ {
-		context, err = stack.Run(framework.NewContext(), bootstrapZone, marathonClient, new(framework.NoopStateStorage), defaultApplicationMaxWait)
+		context, err = stack.Run(&framework.RunRequest{
+			Zone:    bootstrapZone,
+			MaxWait: defaultApplicationMaxWait,
+		}, framework.NewContext(), marathonClient, new(framework.NoopStateStorage))
 		if err == nil {
 			return context, err
 		}

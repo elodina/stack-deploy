@@ -163,7 +163,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			context.Set(varName, varValue)
 		}
 
-		_, err = ts.runStack(stackName, context, runRequest.Zone, ts.storage, runRequest.MaxWait)
+		_, err = ts.runStack(runRequest, context, ts.storage)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -286,13 +286,13 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(name string, context *Context, zone string, storage Storage, maxAppWait int) (*Context, error) {
-	runner, err := storage.GetStackRunner(name)
+func (ts *StackDeployServer) runStack(request *RunRequest, context *Context, storage Storage) (*Context, error) {
+	runner, err := storage.GetStackRunner(request.Name)
 	if err != nil {
 		return nil, err
 	}
-	if zone != "" {
-		layers, err := storage.GetLayersStack(zone)
+	if request.Zone != "" {
+		layers, err := storage.GetLayersStack(request.Zone)
 		if err != nil {
 			return nil, err
 		}
@@ -300,8 +300,8 @@ func (ts *StackDeployServer) runStack(name string, context *Context, zone string
 		runner = layers.GetRunner()
 	}
 
-	Logger.Info("Running stack %s in zone '%s' and context %s", name, zone, context)
-	return runner.Run(context, zone, ts.marathonClient, ts.stateStorage, maxAppWait)
+	Logger.Info("Running stack %s in zone '%s' and context %s", request.Name, request.Zone, context)
+	return runner.Run(request, context, ts.marathonClient, ts.stateStorage)
 }
 
 func layerToInt(layer string) (int, error) {

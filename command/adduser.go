@@ -28,7 +28,7 @@ func (auc *AddUserCommand) Run(args []string) int {
 	client := api.NewClient(stackDeployApi)
 
 	role := "regular"
-	if admin {
+	if *admin {
 		role = "admin"
 	}
 	key, err := client.CreateUser(&api.CreateUserRequest{
