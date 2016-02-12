@@ -20,8 +20,14 @@ type ApplicationState int
 const (
 	StateStaging ApplicationState = iota
 	StateRunning
-	StateFail
+	StateFailed
 )
+
+var ApplicationStates = map[ApplicationState]string{
+	StateStaging: "STAGING",
+	StateRunning: "RUNNING",
+	StateFailed:  "FAILED",
+}
 
 // exposed for testing purposes
 var stdout io.Writer = os.Stdout

@@ -5,6 +5,7 @@ import (
 
 	marathon "github.com/gambol99/go-marathon"
 	yaml "gopkg.in/yaml.v2"
+	"regexp"
 )
 
 const (
@@ -114,7 +115,7 @@ func (s *Stack) Validate() error {
 	return nil
 }
 
-func (s *Stack) Run(context *Context, zone string, client marathon.Marathon, stateStorage StateStorage, maxAppWait int) (*Context, error) {
+func (s *Stack) Run(request *RunRequest, context *Context, client marathon.Marathon, stateStorage StateStorage) (*Context, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
@@ -130,12 +131,16 @@ func (s *Stack) Run(context *Context, zone string, client marathon.Marathon, sta
 	}
 	context.Set("mesos.master", info.MarathonConfig.Master)
 
-	s.runApplications(runningApps, context, client, statuses, maxAppWait)
+	err = s.markSkippedApps(request.SkipApplications, runningApps, statuses)
+	if err != nil {
+		return nil, err
+	}
+	s.runApplications(runningApps, context, client, statuses, request.MaxWait)
 
 	for status := range statuses {
 		if status.err != nil {
 			Logger.Warn("Application %s failed with error %s", status.application.ID, status.err)
-			s.stateStorage.SaveApplicationState(status.application.ID, s.ID(), StateFail)
+			s.stateStorage.SaveApplicationState(status.application.ID, s.ID(), StateFailed)
 			return nil, fmt.Errorf("%s: %s", status.application.ID, status.err)
 		}
 
@@ -147,7 +152,7 @@ func (s *Stack) Run(context *Context, zone string, client marathon.Marathon, sta
 			return context, nil
 		}
 
-		s.runApplications(runningApps, context, client, statuses, maxAppWait)
+		s.runApplications(runningApps, context, client, statuses, request.MaxWait)
 	}
 
 	return context, nil
@@ -157,12 +162,32 @@ func (s Stack) ID() string {
 	return fmt.Sprintf("%s.%s", s.Namespace, s.Name)
 }
 
+func (s *Stack) markSkippedApps(skipApplications []string, runningApps map[string]ApplicationState,
+	statuses chan *applicationRunStatus) error {
+	for _, skipRegex := range skipApplications {
+		pattern, err := regexp.Compile(skipRegex)
+		if err != nil {
+			return err
+		}
+
+		for _, app := range s.Applications {
+			if pattern.MatchString(app.ID) {
+				Logger.Info("Application %s matches skip pattern \"%s\", skipping", app.ID, skipRegex)
+				runningApps[app.ID] = StateRunning
+				statuses <- newApplicationRunStatus(app, nil)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *Stack) runApplications(runningApps map[string]ApplicationState, context *Context, client marathon.Marathon,
 	status chan *applicationRunStatus, maxWait int) {
 	Logger.Debug("Running applications...")
 	for _, app := range s.Applications {
-		if _, exists := runningApps[app.ID]; exists {
-			Logger.Debug("Application %s is already staged/running, continuing", app.ID)
+		if state, exists := runningApps[app.ID]; exists {
+			Logger.Debug("Application %s is in state %s, continuing", app.ID, ApplicationStates[state])
 			continue
 		}
 

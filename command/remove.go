@@ -20,7 +20,7 @@ import (
 
 	"fmt"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type RemoveStackCommand struct{}
@@ -48,7 +48,10 @@ func (rsc *RemoveStackCommand) Run(args []string) int {
 	client := api.NewClient(stackDeployApi)
 
 	fmt.Printf("Removing stack %s\n", name)
-	err = client.RemoveStack(name, *force)
+	err = client.RemoveStack(&api.RemoveStackRequest{
+		Name:  name,
+		Force: *force,
+	})
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		return 1

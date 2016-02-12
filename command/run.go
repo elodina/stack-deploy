@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"errors"
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
+	"regexp"
 	"strings"
 )
 
@@ -36,6 +37,22 @@ func (v vars) Set(value string) error {
 	return nil
 }
 
+type skipApplications []string
+
+func (s *skipApplications) String() string {
+	return strings.Join(*s, ", ")
+}
+
+func (s *skipApplications) Set(value string) error {
+	_, err := regexp.Compile(value)
+	if err != nil {
+		return err
+	}
+
+	*s = append(*s, value)
+	return nil
+}
+
 type RunCommand struct{}
 
 func (rc *RunCommand) Run(args []string) int {
@@ -45,13 +62,15 @@ func (rc *RunCommand) Run(args []string) int {
 	}
 
 	var (
-		flags     = flag.NewFlagSet("run", flag.ExitOnError)
-		apiUrl    = flags.String("api", "", "Stack-deploy server address.")
-		zone      = flags.String("zone", "", "Zone to run stack.")
-		maxWait   = flags.Int("max.wait", defaultApplicationMaxWait, "Maximum time to wait for each application in a stack to become running and healthy.")
-		variables = make(vars)
+		flags            = flag.NewFlagSet("run", flag.ExitOnError)
+		apiUrl           = flags.String("api", "", "Stack-deploy server address.")
+		zone             = flags.String("zone", "", "Zone to run stack.")
+		maxWait          = flags.Int("max.wait", defaultApplicationMaxWait, "Maximum time to wait for each application in a stack to become running and healthy.")
+		variables        = make(vars)
+		skipApplications = make(skipApplications, 0)
 	)
-	flags.Var(variables, "var", "Arbitrary variables to add to stack context")
+	flags.Var(variables, "var", "Arbitrary variables to add to stack context. Multiple occurrences of this flag allowed.")
+	flags.Var(&skipApplications, "skip", "Regular expression of applications to skip in stack. Multiple occurrences of this flag allowed.")
 	flags.Parse(args[1:])
 
 	name := args[0]
@@ -64,7 +83,13 @@ func (rc *RunCommand) Run(args []string) int {
 
 	fmt.Printf("Running stack %s\n", name)
 	start := time.Now()
-	err = client.Run(name, *zone, *maxWait, variables)
+	err = client.Run(&api.RunRequest{
+		Name:             name,
+		Zone:             *zone,
+		MaxWait:          *maxWait,
+		Variables:        variables,
+		SkipApplications: skipApplications,
+	})
 	if err != nil {
 		fmt.Printf("ERROR running client request: %s\n", err)
 		return 1

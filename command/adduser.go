@@ -5,7 +5,7 @@ import (
 
 	"fmt"
 
-	"github.com/elodina/stack-deploy/api"
+	api "github.com/elodina/stack-deploy/framework"
 )
 
 type AddUserCommand struct{}
@@ -26,7 +26,15 @@ func (auc *AddUserCommand) Run(args []string) int {
 	}
 
 	client := api.NewClient(stackDeployApi)
-	key, err := client.CreateUser(*name, *admin)
+
+	role := "regular"
+	if *admin {
+		role = "admin"
+	}
+	key, err := client.CreateUser(&api.CreateUserRequest{
+		Name: *name,
+		Role: role,
+	})
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		return 1

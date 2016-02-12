@@ -135,7 +135,7 @@ var dependencyPositiveCases map[*Application]map[string]ApplicationState = map[*
 		"bar": StateRunning,
 		"baz": StateRunning,
 		"bak": StateStaging,
-		"bat": StateFail,
+		"bat": StateFailed,
 	},
 }
 
@@ -168,7 +168,7 @@ var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar"},
 	}: map[string]ApplicationState{
-		"bar": StateFail,
+		"bar": StateFailed,
 	},
 
 	&Application{

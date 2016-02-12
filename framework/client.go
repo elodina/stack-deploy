@@ -1,4 +1,4 @@
-package api
+package framework
 
 import (
 	"bytes"
@@ -10,16 +10,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elodina/pyrgus/log"
-	"github.com/elodina/stack-deploy/framework"
 	yaml "gopkg.in/yaml.v2"
 )
 
-var Logger = log.NewDefaultLogger()
-
 type apiRequest struct {
 	url  string
-	data map[string]interface{}
+	data interface{}
 }
 
 type Client struct {
@@ -72,17 +68,17 @@ func (c *Client) List() ([]string, error) {
 	return stacks, err
 }
 
-func (c *Client) GetStack(name string) (*framework.Stack, error) {
+func (c *Client) GetStack(data *GetStackRequest) (*Stack, error) {
 	request := apiRequest{
 		url:  "/get",
-		data: map[string]interface{}{"name": name},
+		data: data,
 	}
 	content, err := c.request(request)
 	if err != nil {
 		return nil, err
 	}
 
-	stack := new(framework.Stack)
+	stack := new(Stack)
 	err = yaml.Unmarshal(content, &stack)
 	if err != nil {
 		return nil, err
@@ -91,50 +87,46 @@ func (c *Client) GetStack(name string) (*framework.Stack, error) {
 	return stack, err
 }
 
-func (c *Client) Run(name string, zone string, maxWait int, variables map[string]string) error {
+func (c *Client) Run(data *RunRequest) error {
 	request := apiRequest{
 		url:  "/run",
-		data: map[string]interface{}{"name": name, "zone": zone, "maxwait": maxWait, "variables": variables},
+		data: data,
 	}
 	_, err := c.request(request)
 	return err
 }
 
-func (c *Client) CreateStack(stackData string) error {
+func (c *Client) CreateStack(data *CreateStackRequest) error {
 	request := apiRequest{
 		url:  "/createstack",
-		data: map[string]interface{}{"stackfile": stackData},
+		data: data,
 	}
 	_, err := c.request(request)
 	return err
 }
 
-func (c *Client) CreateLayer(stackData string, level string, parent string) error {
+func (c *Client) CreateLayer(data *CreateLayerRequest) error {
 	request := apiRequest{
 		url:  "/createlayer",
-		data: map[string]interface{}{"stackfile": stackData, "layer": level, "parent": parent},
+		data: data,
 	}
 	_, err := c.request(request)
 	return err
 }
 
-func (c *Client) RemoveStack(name string, force bool) error {
+func (c *Client) RemoveStack(data *RemoveStackRequest) error {
 	request := apiRequest{
 		url:  "/removestack",
-		data: map[string]interface{}{"name": name, "force": force},
+		data: data,
 	}
 	_, err := c.request(request)
 	return err
 }
 
-func (c *Client) CreateUser(name string, admin bool) (string, error) {
-	role := "regular"
-	if admin {
-		role = "admin"
-	}
+func (c *Client) CreateUser(data *CreateUserRequest) (string, error) {
 	request := apiRequest{
 		url:  "/createuser",
-		data: map[string]interface{}{"name": name, "role": role},
+		data: data,
 	}
 	resp, err := c.request(request)
 	if err != nil {
@@ -143,10 +135,10 @@ func (c *Client) CreateUser(name string, admin bool) (string, error) {
 	return string(resp), nil
 }
 
-func (c *Client) RefreshToken(name string) (string, error) {
+func (c *Client) RefreshToken(data *RefreshTokenRequest) (string, error) {
 	request := apiRequest{
 		url:  "/refreshtoken",
-		data: map[string]interface{}{"name": name},
+		data: data,
 	}
 	resp, err := c.request(request)
 	if err != nil {
