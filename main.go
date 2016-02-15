@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	cli := cli.NewCLI("stack-deploy", "0.2.0.1")
+	cli := cli.NewCLI("stack-deploy", "0.2.1.0")
 	cli.Args = os.Args[1:]
 	cli.Commands = commands()
 

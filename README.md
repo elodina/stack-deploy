@@ -17,6 +17,8 @@ stack-deploy
 * [Minimal stack examples](#minimal-stack-examples)
 * [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
 
+[Changelog](https://github.com/elodina/stack-deploy/blob/master/CHANGELOG.md)
+
 Installation
 ============
 Prerequisites
@@ -50,6 +52,7 @@ Available flags:
 
 `--master` - [`127.0.0.1:5050`] - Mesos Master address [host]:[port].    
 `--marathon` - [`http://127.0.0.1:8080`] - Marathon address [host]:[port].    
+`--var` - Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.    
 `--api` - [`0.0.0.0:4200`] - stack-deploy server bind address.    
 `--bootstrap` - Stack file to bootstrap with.    
 `--cassandra` - [`127.0.0.1`] - Cassandra cluster IP addresses, comma separated.    
