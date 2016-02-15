@@ -115,7 +115,7 @@ func (s *Stack) Validate() error {
 	return nil
 }
 
-func (s *Stack) Run(request *RunRequest, context *Context, client marathon.Marathon, stateStorage StateStorage) (*Context, error) {
+func (s *Stack) Run(request *RunRequest, context *StackContext, client marathon.Marathon, stateStorage StateStorage) (*StackContext, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
@@ -129,9 +129,9 @@ func (s *Stack) Run(request *RunRequest, context *Context, client marathon.Marat
 		Logger.Debug("Error getting client info: %s", err)
 		return nil, err
 	}
-	context.Set("mesos.master", info.MarathonConfig.Master)
-	context.Set("zone", request.Zone)
-	context.Set("stack", s.Name)
+	context.SetStackVariable("mesos.master", info.MarathonConfig.Master)
+	context.SetStackVariable("zone", request.Zone)
+	context.SetStackVariable("stack", s.Name)
 
 	err = s.markSkippedApps(request.SkipApplications, runningApps, statuses)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *Stack) markSkippedApps(skipApplications []string, runningApps map[strin
 	return nil
 }
 
-func (s *Stack) runApplications(runningApps map[string]ApplicationState, context *Context, client marathon.Marathon,
+func (s *Stack) runApplications(runningApps map[string]ApplicationState, context *StackContext, client marathon.Marathon,
 	status chan *applicationRunStatus, maxWait int) {
 	Logger.Debug("Running applications...")
 	for _, app := range s.Applications {
@@ -200,7 +200,7 @@ func (s *Stack) runApplications(runningApps map[string]ApplicationState, context
 	}
 }
 
-func (s *Stack) runApplication(app *Application, context *Context, client marathon.Marathon,
+func (s *Stack) runApplication(app *Application, context *StackContext, client marathon.Marathon,
 	status chan *applicationRunStatus, maxWait int) {
 	err := app.Run(context, client, s.stateStorage, maxWait)
 	if err != nil {

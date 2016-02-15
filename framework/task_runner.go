@@ -20,6 +20,6 @@ import "github.com/gambol99/go-marathon"
 var TaskRunners map[string]TaskRunner
 
 type TaskRunner interface {
-	FillContext(context *Context, application *Application, task marathon.Task) error
-	RunTask(context *Context, application *Application, task map[string]string) error
+	FillContext(context *StackContext, application *Application, task marathon.Task) error
+	RunTask(context *StackContext, application *Application, task map[string]string) error
 }

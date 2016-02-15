@@ -119,7 +119,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	return 0
 }
 
-func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, retries int, backoff time.Duration) (*framework.Context, error) {
+func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, retries int, backoff time.Duration) (*framework.StackContext, error) {
 	stackFileData, err := ioutil.ReadFile(stackFile)
 	if err != nil {
 		Logger.Error("Can't read file %s", stackFile)
@@ -133,7 +133,7 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 
 	Logger.Debug("Boostrapping with stack: \n%s", string(stackFileData))
 
-	var context *framework.Context
+	var context *framework.StackContext
 	bootstrapZone := ""
 	for i := 0; i < retries; i++ {
 		context, err = stack.Run(&framework.RunRequest{
