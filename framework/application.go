@@ -126,7 +126,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 		return err
 	}
 
-	application := a.createApplication()
+	application := a.createApplication(context)
 	_, err = client.CreateApplication(application)
 	if err != nil {
 		return err
@@ -298,10 +298,10 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 	return nil
 }
 
-func (a *Application) createApplication() *marathon.Application {
+func (a *Application) createApplication(context *Context) *marathon.Application {
 	application := &marathon.Application{
 		ID:           a.ID,
-		Cmd:          a.getLaunchCommand(),
+		Cmd:          a.getLaunchCommand(context),
 		Instances:    a.getInstances(),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
@@ -311,16 +311,37 @@ func (a *Application) createApplication() *marathon.Application {
 		User:         a.User,
 		HealthChecks: a.getHealthchecks(),
 		Constraints:  a.Constraints,
+		Labels:       a.getLabelsFromContext(context),
 	}
 	return application
 }
 
-func (a *Application) getLaunchCommand() string {
+func (a *Application) getLabelsFromContext(context *Context) map[string]string {
+	keys := []string{"zone", "stack"}
+	labels := make(map[string]string)
+	for _, key := range keys {
+		val, _ := context.Get(key)
+		if val != "" {
+			labels[key] = val
+		}
+	}
+	return labels
+}
+
+func (a *Application) getLaunchCommand(context *Context) string {
 	cmd := a.LaunchCommand
 	for k, v := range a.Scheduler {
 		cmd += fmt.Sprintf(" --%s %s", k, fmt.Sprint(v))
 	}
-
+	labelStrings := make([]string, 0)
+	for key, val := range a.getLabelsFromContext(context) {
+		labelStrings = append(labelStrings, fmt.Sprintf("%s=%s", key, val))
+	}
+	stackLabels := strings.Join(labelStrings, ";")
+	if stackLabels != "" {
+		env := fmt.Sprintf("STACK_LABELS=\"%s\" ", stackLabels)
+		cmd = env + cmd
+	}
 	return cmd
 }
 
