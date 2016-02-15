@@ -130,6 +130,8 @@ func (s *Stack) Run(request *RunRequest, context *Context, client marathon.Marat
 		return nil, err
 	}
 	context.Set("mesos.master", info.MarathonConfig.Master)
+	context.Set("zone", request.Zone)
+	context.Set("stack", s.Name)
 
 	err = s.markSkippedApps(request.SkipApplications, runningApps, statuses)
 	if err != nil {
