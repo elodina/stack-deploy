@@ -26,7 +26,7 @@ func TestNewApiServer(t *testing.T) {
 		stateStorage := &MockStateStorage{}
 
 		Convey("When creating new API Server", func() {
-			server := NewApiServer(api, marathonClient, storage, userStorage, stateStorage)
+			server := NewApiServer(api, marathonClient, nil, storage, userStorage, stateStorage)
 
 			Convey("It should return not nil server", func() {
 				So(server, ShouldNotBeNil)

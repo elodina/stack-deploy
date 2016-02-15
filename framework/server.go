@@ -12,23 +12,25 @@ import (
 )
 
 type StackDeployServer struct {
-	api            string
-	marathonClient marathon.Marathon
-	storage        Storage
-	stateStorage   StateStorage
-	userStorage    UserStorage
+	api             string
+	marathonClient  marathon.Marathon
+	globalVariables map[string]string
+	storage         Storage
+	stateStorage    StateStorage
+	userStorage     UserStorage
 }
 
-func NewApiServer(api string, marathonClient marathon.Marathon, storage Storage, userStorage UserStorage, stateStorage StateStorage) *StackDeployServer {
+func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables map[string]string, storage Storage, userStorage UserStorage, stateStorage StateStorage) *StackDeployServer {
 	if strings.HasPrefix(api, "http://") {
 		api = api[len("http://"):]
 	}
 	server := &StackDeployServer{
-		api:            api,
-		marathonClient: marathonClient,
-		storage:        storage,
-		stateStorage:   stateStorage,
-		userStorage:    userStorage,
+		api:             api,
+		marathonClient:  marathonClient,
+		globalVariables: globalVariables,
+		storage:         storage,
+		stateStorage:    stateStorage,
+		userStorage:     userStorage,
 	}
 	return server
 }
@@ -159,6 +161,9 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		context := NewContext()
+		for varName, varValue := range ts.globalVariables {
+			context.SetGlobalVariable(varName, varValue)
+		}
 		for varName, varValue := range runRequest.Variables {
 			context.SetArbitraryVariable(varName, varValue)
 		}
