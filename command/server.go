@@ -55,7 +55,10 @@ func (sc *ServerCommand) Run(args []string) int {
 		connectRetries = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
 		connectBackoff = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
 		debug          = flags.Bool("debug", false, "Flag for debug mode")
+		variables      = make(vars)
 	)
+	flags.Var(variables, "var", "Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.")
+
 	flags.Parse(args)
 	if *debug {
 		Logger = log.NewConsoleLogger(log.DebugLevel, log.DefaultLogFormat)
@@ -109,7 +112,7 @@ func (sc *ServerCommand) Run(args []string) int {
 		panic(err)
 	}
 
-	apiServer := framework.NewApiServer(*api, marathonClient, storage, userStorage, stateStorage)
+	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage)
 	if key != "" {
 		fmt.Printf("***\nAdmin user key: %s\n***\n", key)
 	}
