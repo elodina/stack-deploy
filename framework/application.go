@@ -113,7 +113,7 @@ func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationSt
 	return true
 }
 
-func (a *Application) Run(context *Context, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
+func (a *Application) Run(context *StackContext, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
 	Logger.Debug("Running application: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
@@ -194,7 +194,7 @@ func (a *Application) Run(context *Context, client marathon.Marathon, stateStora
 	return a.executeCommands(a.AfterTasks, fmt.Sprintf("%s_after_tasks.sh", a.ID))
 }
 
-func (a *Application) storeTaskState(task map[string]string, context *Context) error {
+func (a *Application) storeTaskState(task map[string]string, context *StackContext) error {
 	err := a.stateStorage.SaveTaskState(task, context.All(), StateRunning)
 	if err != nil {
 		Logger.Error(err)
@@ -202,7 +202,7 @@ func (a *Application) storeTaskState(task map[string]string, context *Context) e
 	return err
 }
 
-func (a *Application) resolveVariables(context *Context) {
+func (a *Application) resolveVariables(context *StackContext) {
 	for k, v := range context.All() {
 		a.LaunchCommand = strings.Replace(a.LaunchCommand, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		for schedulerKey, schedulerValue := range a.Scheduler {
@@ -244,7 +244,7 @@ func (a *Application) executeCommands(commands []string, fileName string) error 
 	return cmd.Run()
 }
 
-func (a *Application) resolveCmdVariables(commands []string, context *Context) {
+func (a *Application) resolveCmdVariables(commands []string, context *StackContext) {
 	for k, v := range context.All() {
 		for idx, cmd := range commands {
 			commands[idx] = strings.Replace(cmd, fmt.Sprintf("${%s}", k), v, -1)
@@ -252,7 +252,7 @@ func (a *Application) resolveCmdVariables(commands []string, context *Context) {
 	}
 }
 
-func (a *Application) fillContext(context *Context, runner TaskRunner, client marathon.Marathon) error {
+func (a *Application) fillContext(context *StackContext, runner TaskRunner, client marathon.Marathon) error {
 	tasks, err := client.Tasks(a.ID)
 	if err != nil {
 		return err
@@ -298,7 +298,7 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 	return nil
 }
 
-func (a *Application) createApplication(context *Context) *marathon.Application {
+func (a *Application) createApplication(context *StackContext) *marathon.Application {
 	application := &marathon.Application{
 		ID:           a.ID,
 		Cmd:          a.getLaunchCommand(context),
@@ -316,7 +316,7 @@ func (a *Application) createApplication(context *Context) *marathon.Application 
 	return application
 }
 
-func (a *Application) getLabelsFromContext(context *Context) map[string]string {
+func (a *Application) getLabelsFromContext(context *StackContext) map[string]string {
 	keys := []string{"zone", "stack"}
 	labels := make(map[string]string)
 	for _, key := range keys {
@@ -328,7 +328,7 @@ func (a *Application) getLabelsFromContext(context *Context) map[string]string {
 	return labels
 }
 
-func (a *Application) getLaunchCommand(context *Context) string {
+func (a *Application) getLaunchCommand(context *StackContext) string {
 	cmd := a.LaunchCommand
 	for k, v := range a.Scheduler {
 		cmd += fmt.Sprintf(" --%s %s", k, fmt.Sprint(v))
@@ -390,7 +390,7 @@ func (a *Application) String() string {
 	return string(yml)
 }
 
-func ensureVariablesResolved(context *Context, values ...interface{}) error {
+func ensureVariablesResolved(context *StackContext, values ...interface{}) error {
 	for _, value := range values {
 		switch v := value.(type) {
 		case string:
@@ -429,7 +429,7 @@ func ensureVariablesResolved(context *Context, values ...interface{}) error {
 	return nil
 }
 
-func ensureStringVariableResolved(context *Context, value string) error {
+func ensureStringVariableResolved(context *StackContext, value string) error {
 	unresolved := variableRegexp.FindString(value)
 	if unresolved != "" {
 		return fmt.Errorf("Unresolved variable %s. Available variables:\n%s", unresolved, context)

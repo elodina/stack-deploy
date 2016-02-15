@@ -160,7 +160,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 
 		context := NewContext()
 		for varName, varValue := range runRequest.Variables {
-			context.Set(varName, varValue)
+			context.SetArbitraryVariable(varName, varValue)
 		}
 
 		_, err = ts.runStack(runRequest, context, ts.storage)
@@ -286,7 +286,7 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(request *RunRequest, context *Context, storage Storage) (*Context, error) {
+func (ts *StackDeployServer) runStack(request *RunRequest, context *StackContext, storage Storage) (*StackContext, error) {
 	runner, err := storage.GetStackRunner(request.Name)
 	if err != nil {
 		return nil, err

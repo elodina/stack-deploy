@@ -29,17 +29,17 @@ import (
 
 type DSE02xTaskRunner struct{}
 
-func (dtr *DSE02xTaskRunner) FillContext(context *framework.Context, application *framework.Application, task marathon.Task) error {
-	context.Set(fmt.Sprintf("%s.host", application.ID), task.Host)
+func (dtr *DSE02xTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
-		context.Set(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
+		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
 	}
-	context.Set(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
+	context.SetStackVariable(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
 
 	return nil
 }
 
-func (dtr *DSE02xTaskRunner) RunTask(context *framework.Context, application *framework.Application, task map[string]string) error {
+func (dtr *DSE02xTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewDSEMesos02xClient(api)
@@ -61,7 +61,7 @@ func (dtr *DSE02xTaskRunner) RunTask(context *framework.Context, application *fr
 	return dtr.fillTaskContext(context, application, response)
 }
 
-func (dtr *DSE02xTaskRunner) fillTaskContext(context *framework.Context, application *framework.Application, response []byte) error {
+func (dtr *DSE02xTaskRunner) fillTaskContext(context *framework.StackContext, application *framework.Application, response []byte) error {
 	startResponse := new(DSEMesos02xStartResponse)
 	err := json.Unmarshal(response, &startResponse)
 	if err != nil {
@@ -76,16 +76,16 @@ func (dtr *DSE02xTaskRunner) fillTaskContext(context *framework.Context, applica
 	for _, node := range startResponse.Nodes {
 		nodeEndpoint := fmt.Sprintf("%s:%d", node.Runtime.Address, node.Runtime.Reservation.Ports["cql"])
 
-		context.Set(fmt.Sprintf("%s.cassandra-%s", application.ID, fmt.Sprint(node.ID)), nodeEndpoint)
-		context.Set(fmt.Sprintf("%s.cassandra-%s.host", application.ID, fmt.Sprint(node.ID)), node.Runtime.Address)
+		context.SetStackVariable(fmt.Sprintf("%s.cassandra-%s", application.ID, fmt.Sprint(node.ID)), nodeEndpoint)
+		context.SetStackVariable(fmt.Sprintf("%s.cassandra-%s.host", application.ID, fmt.Sprint(node.ID)), node.Runtime.Address)
 		for name, port := range node.Runtime.Reservation.Ports {
-			context.Set(fmt.Sprintf("%s.cassandra-%s.%sPort", application.ID, fmt.Sprint(node.ID), name), fmt.Sprint(port))
+			context.SetStackVariable(fmt.Sprintf("%s.cassandra-%s.%sPort", application.ID, fmt.Sprint(node.ID), name), fmt.Sprint(port))
 		}
 
 		servers = append(servers, nodeEndpoint)
 	}
 
-	context.Set(fmt.Sprintf("%s.cassandraConnect", application.ID), strings.Join(servers, ","))
+	context.SetStackVariable(fmt.Sprintf("%s.cassandraConnect", application.ID), strings.Join(servers, ","))
 	return nil
 }
 

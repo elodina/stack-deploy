@@ -259,7 +259,7 @@ func TestApplication(t *testing.T) {
 
 	Convey("Application should resolve variables", t, func() {
 		ctx := NewContext()
-		ctx.Set("foo", "bar")
+		ctx.SetStackVariable("foo", "bar")
 
 		app := new(Application)
 		app.LaunchCommand = "./${foo}.sh"
@@ -324,13 +324,13 @@ func TestApplication(t *testing.T) {
 		app := new(Application)
 		app.LaunchCommand = "./script.sh"
 
-		So(app.getLaunchCommand(&Context{}), ShouldEqual, "./script.sh")
+		So(app.getLaunchCommand(&StackContext{}), ShouldEqual, "./script.sh")
 
 		app.Scheduler = map[string]string{
 			"foo": "bar",
 		}
 
-		So(app.getLaunchCommand(&Context{}), ShouldEqual, "./script.sh --foo bar")
+		So(app.getLaunchCommand(&StackContext{}), ShouldEqual, "./script.sh --foo bar")
 	})
 
 	Convey("Custom shell commands should run correctly", t, func() {

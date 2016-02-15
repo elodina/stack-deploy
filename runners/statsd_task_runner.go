@@ -28,17 +28,17 @@ import (
 
 type StatsdTaskRunner struct{}
 
-func (str *StatsdTaskRunner) FillContext(context *framework.Context, application *framework.Application, task marathon.Task) error {
-	context.Set(fmt.Sprintf("%s.host", application.ID), task.Host)
+func (str *StatsdTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
-		context.Set(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
+		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
 	}
-	context.Set(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
+	context.SetStackVariable(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
 
 	return nil
 }
 
-func (str *StatsdTaskRunner) RunTask(context *framework.Context, application *framework.Application, task map[string]string) error {
+func (str *StatsdTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewStatsdMesosClient(api)

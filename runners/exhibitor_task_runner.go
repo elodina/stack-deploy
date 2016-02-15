@@ -30,17 +30,17 @@ import (
 
 type ExhibitorTaskRunner struct{}
 
-func (etr *ExhibitorTaskRunner) FillContext(context *framework.Context, application *framework.Application, task marathon.Task) error {
-	context.Set(fmt.Sprintf("%s.host", application.ID), task.Host)
+func (etr *ExhibitorTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
-		context.Set(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
+		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
 	}
-	context.Set(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
+	context.SetStackVariable(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
 
 	return nil
 }
 
-func (etr *ExhibitorTaskRunner) RunTask(context *framework.Context, application *framework.Application, task map[string]string) error {
+func (etr *ExhibitorTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewExhibitorMesosClient(api)
@@ -67,7 +67,7 @@ func (etr *ExhibitorTaskRunner) RunTask(context *framework.Context, application 
 	return client.AwaitZookeeperRunning()
 }
 
-func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.Context, application *framework.Application, response *exhibitorCluster) error {
+func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.StackContext, application *framework.Application, response *exhibitorCluster) error {
 	servers := make([]string, 0)
 	serversMap := make(map[string]string)
 
@@ -79,10 +79,10 @@ func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.Context, appl
 	}
 
 	for id, host := range servers {
-		context.Set(fmt.Sprintf("%s.exhibitor-%s", application.ID, fmt.Sprint(id)), host)
+		context.SetStackVariable(fmt.Sprintf("%s.exhibitor-%s", application.ID, fmt.Sprint(id)), host)
 	}
 
-	context.Set(fmt.Sprintf("%s.zkConnect", application.ID), strings.Join(servers, ","))
+	context.SetStackVariable(fmt.Sprintf("%s.zkConnect", application.ID), strings.Join(servers, ","))
 	return nil
 }
 

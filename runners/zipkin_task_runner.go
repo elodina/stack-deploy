@@ -28,17 +28,17 @@ import (
 
 type ZipkinTaskRunner struct{}
 
-func (ztr *ZipkinTaskRunner) FillContext(context *framework.Context, application *framework.Application, task marathon.Task) error {
-	context.Set(fmt.Sprintf("%s.host", application.ID), task.Host)
+func (ztr *ZipkinTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
-		context.Set(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
+		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
 	}
-	context.Set(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
+	context.SetStackVariable(fmt.Sprintf("%s.api", application.ID), fmt.Sprintf("http://%s:%d", task.Host, task.Ports[0]))
 
 	return nil
 }
 
-func (ztr *ZipkinTaskRunner) RunTask(context *framework.Context, application *framework.Application, task map[string]string) error {
+func (ztr *ZipkinTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	id, ok := task["id"]
@@ -69,7 +69,7 @@ func (ztr *ZipkinTaskRunner) RunTask(context *framework.Context, application *fr
 	return nil
 }
 
-func (ztr *ZipkinTaskRunner) fillTaskContext(context *framework.Context, application *framework.Application, response map[string]interface{}) error {
+func (ztr *ZipkinTaskRunner) fillTaskContext(context *framework.StackContext, application *framework.Application, response map[string]interface{}) error {
 	valueArr, ok := response["value"].([]interface{})
 	if !ok {
 		return errors.New("Wrong value field")
@@ -106,7 +106,7 @@ func (ztr *ZipkinTaskRunner) fillTaskContext(context *framework.Context, applica
 			return errors.New("Wrong QUERY_PORT env")
 		}
 
-		context.Set(fmt.Sprintf("%s.query-%s.endpoint", application.ID, id), fmt.Sprintf("%s:%s", hostname, queryPort))
+		context.SetStackVariable(fmt.Sprintf("%s.query-%s.endpoint", application.ID, id), fmt.Sprintf("%s:%s", hostname, queryPort))
 	}
 
 	return nil

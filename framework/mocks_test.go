@@ -27,8 +27,8 @@ func (*MockStorage) GetStack(name string) (*Stack, error) {
 
 type FakeStack struct{}
 
-func (*FakeStack) Run(*RunRequest, *Context, marathon.Marathon, StateStorage) (*Context, error) {
-	return &Context{}, nil
+func (*FakeStack) Run(*RunRequest, *StackContext, marathon.Marathon, StateStorage) (*StackContext, error) {
+	return &StackContext{}, nil
 }
 func (*FakeStack) GetStack() *Stack {
 	return &Stack{
@@ -82,11 +82,11 @@ type MockTaskRunner struct {
 	runErr  error
 }
 
-func (m *MockTaskRunner) FillContext(context *Context, application *Application, task marathon.Task) error {
-	context.Set("foo", "bar")
+func (m *MockTaskRunner) FillContext(context *StackContext, application *Application, task marathon.Task) error {
+	context.SetStackVariable("foo", "bar")
 	return m.fillErr
 }
-func (m *MockTaskRunner) RunTask(context *Context, application *Application, task map[string]string) error {
+func (m *MockTaskRunner) RunTask(context *StackContext, application *Application, task map[string]string) error {
 	return m.runErr
 }
 
