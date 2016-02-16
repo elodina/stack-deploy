@@ -1,62 +1,56 @@
 zookeeper:
   image: garland/zookeeper
+  net: host
   ports:
     - "2181:2181"
+
 mesos-master:
   image: mesoscloud/mesos-master
-  hostname: mesos-master
+  net: host
   ports:
     - "5050:5050"
   environment:
-    - MESOS_ZK=zk://zookeeper:2181/mesos
+    - MESOS_ZK=zk://127.0.0.1:2181/mesos
     - MESOS_LOG_DIR=/var/log/mesos
     - MESOS_QUORUM=1
     - MESOS_REGISTRY=in_memory
     - MESOS_WORK_DIR=/var/lib/mesos
     - MESOS_EXECUTOR_REGISTRATION_TIMEOUT=10mins
-  links:
-    - zookeeper
+
 mesos-slave:
   image: mesoscloud/mesos-slave
   ports:
     - "5051:5051"
   mem_limit: 4096m
-  hostname: mesos-slave
+  net: host
   restart: on-failure
   environment:
-    - MESOS_MASTER=zk://zookeeper:2181/mesos
+    - MESOS_MASTER=zk://127.0.0.1:2181/mesos
     - MESOS_LOG_DIR=/var/log/mesos
     - MESOS_LOGGING_LEVEL=INFO
-  links:
-    - zookeeper
+
 marathon:
   image: mesoscloud/marathon
-  hostname: marathon
+  net: host
   ports:
     - "8080:8080"
     - "2888:2888"
     - "3888:3888"
   environment:
-    - MARATHON_MASTER=zk://zookeeper:2181/mesos
-    - MARATHON_ZK=zk://zookeeper:2181/marathon
+    - MARATHON_MASTER=zk://127.0.0.1:2181/mesos
+    - MARATHON_ZK=zk://127.0.0.1:2181/marathon
     - MARATHON_HOSTNAME=marathon
-  links:
-    - zookeeper
-    - mesos-slave
-    - mesos-master
+
 cassandra:
   image: cassandra:2.2
+  net: host
   ports:
     - "9042:9042"
+
 stack-deploy:
   build: .
+  net: host
   restart: on-failure
-  command: stack-deploy server --marathon http://marathon:8080 --cassandra=cassandra:9042 --master mesos-master:5050 --debug
+  command: stack-deploy server --marathon http://localhost:8080 --cassandra=localhost:9042 --master localhost:5050 --debug
   ports:
     - "4200:4200"
-  links:
-    - mesos-master
-    - mesos-slave
-    - marathon
-    - cassandra
-    - zookeeper

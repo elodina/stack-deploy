@@ -94,3 +94,11 @@ type FakeMesos struct{}
 
 func (FakeMesos) Update() error               { return nil }
 func (FakeMesos) GetActivatedSlaves() float64 { return 0 }
+
+type MockScheduler struct {
+	startErr error
+}
+
+func (ms *MockScheduler) Start() error {
+	return ms.startErr
+}

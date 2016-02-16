@@ -44,9 +44,10 @@ func NewServerCommand(runners map[string]framework.TaskRunner) *ServerCommand {
 }
 
 func (sc *ServerCommand) Run(args []string) int {
+	schedulerConfig := framework.NewSchedulerConfig()
+
 	var (
 		flags          = flag.NewFlagSet("server", flag.ExitOnError)
-		masterURL      = flags.String("master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
 		marathonURL    = flags.String("marathon", "http://127.0.0.1:8080", "Marathon address <ip:port>.")
 		api            = flags.String("api", "0.0.0.0:4200", "Stack-deploy server binding address")
 		bootstrap      = flags.String("bootstrap", "", "Stack file to bootstrap with.")
@@ -57,6 +58,11 @@ func (sc *ServerCommand) Run(args []string) int {
 		debug          = flags.Bool("debug", false, "Flag for debug mode")
 		variables      = make(vars)
 	)
+	flags.StringVar(&schedulerConfig.Master, "master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
+	flags.StringVar(&schedulerConfig.User, "framework.user", "", "Mesos user. Defaults to current system user.")
+	flags.StringVar(&schedulerConfig.FrameworkName, "framework.name", "stack-deploy", "Mesos framework name. Defaults to stack-deploy.")
+	flags.StringVar(&schedulerConfig.FrameworkRole, "framework.role", "*", "Mesos framework role. Defaults to *.")
+	flags.DurationVar(&schedulerConfig.FailoverTimeout, "failover.timeout", 168*time.Hour, "Mesos framework failover timeout. Defaults to 1 week.")
 	flags.Var(variables, "var", "Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.")
 
 	flags.Parse(args)
@@ -70,7 +76,7 @@ func (sc *ServerCommand) Run(args []string) int {
 
 	framework.TaskRunners = sc.runners
 
-	framework.Mesos = framework.NewMesosState(*masterURL)
+	framework.Mesos = framework.NewMesosState(schedulerConfig.Master)
 	err := framework.Mesos.Update()
 	if err != nil {
 		Logger.Critical("%s", err)
@@ -107,12 +113,15 @@ func (sc *ServerCommand) Run(args []string) int {
 	if err != nil {
 		panic(err)
 	}
+
 	stateStorage, err := framework.NewCassandraStateStorage(connection, *keyspace)
 	if err != nil {
 		panic(err)
 	}
 
-	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage)
+	scheduler := framework.NewScheduler(schedulerConfig)
+
+	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler)
 	if key != "" {
 		fmt.Printf("***\nAdmin user key: %s\n***\n", key)
 	}
