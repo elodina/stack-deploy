@@ -59,6 +59,10 @@ Available flags:
 `--keyspace` - [`stack-deploy`] - Cassandra keyspace.    
 `--connect.retries` - [`10`] - Number of retries to connect either to Marathon or Cassandra.    
 `--connect.backoff` - [`10s`] - Backoff between connection attempts to either Marathon or Cassandra.    
+`--framework.user` - [empty string] - Mesos user. Defaults to current system user.    
+`--framework.name` - [`stack-deploy`] - Mesos framework name.    
+`--framework.role` - [`*`] - Mesos framework role.    
+`--failover.timeout` - [`168 * time.Hour`] - Mesos framework failover timeout. Defaults to 1 week.    
 `--debug` - [`false`] - Flag for debug mode.
 
 To check the server is started, run:
