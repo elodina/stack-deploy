@@ -314,7 +314,7 @@ func (ts *StackDeployServer) runStack(request *RunRequest, context *StackContext
 	}
 
 	Logger.Info("Running stack %s in zone '%s' and context %s", request.Name, request.Zone, context)
-	return runner.Run(request, context, ts.marathonClient, ts.stateStorage)
+	return runner.Run(request, context, ts.marathonClient, ts.scheduler, ts.stateStorage)
 }
 
 func layerToInt(layer string) (int, error) {

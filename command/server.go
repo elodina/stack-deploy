@@ -89,8 +89,10 @@ func (sc *ServerCommand) Run(args []string) int {
 		return 1
 	}
 
+	scheduler := framework.NewScheduler(schedulerConfig)
+
 	if *bootstrap != "" {
-		context, err := sc.Bootstrap(*bootstrap, marathonClient, *connectRetries, *connectBackoff)
+		context, err := sc.Bootstrap(*bootstrap, marathonClient, scheduler, *connectRetries, *connectBackoff)
 		if err != nil {
 			Logger.Critical("%s", err)
 			return 1
@@ -119,8 +121,6 @@ func (sc *ServerCommand) Run(args []string) int {
 		panic(err)
 	}
 
-	scheduler := framework.NewScheduler(schedulerConfig)
-
 	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler)
 	if key != "" {
 		fmt.Printf("***\nAdmin user key: %s\n***\n", key)
@@ -131,7 +131,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	return 0
 }
 
-func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, retries int, backoff time.Duration) (*framework.StackContext, error) {
+func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, scheduler framework.Scheduler, retries int, backoff time.Duration) (*framework.StackContext, error) {
 	stackFileData, err := ioutil.ReadFile(stackFile)
 	if err != nil {
 		Logger.Error("Can't read file %s", stackFile)
@@ -151,7 +151,7 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 		context, err = stack.Run(&framework.RunRequest{
 			Zone:    bootstrapZone,
 			MaxWait: defaultApplicationMaxWait,
-		}, framework.NewContext(), marathonClient, new(framework.NoopStateStorage))
+		}, framework.NewContext(), marathonClient, scheduler, new(framework.NoopStateStorage))
 		if err == nil {
 			return context, err
 		}

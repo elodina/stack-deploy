@@ -421,19 +421,19 @@ func TestApplication(t *testing.T) {
 
 		Convey("Should fail if there is unresolved variable in BeforeScheduler script", func() {
 			app.BeforeScheduler = []string{"${bar}"}
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.BeforeScheduler = nil
 		})
 
 		Convey("Should fail if there is an error in BeforeScheduler script", func() {
 			app.BeforeScheduler = []string{"echozzz"}
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
 			app.BeforeScheduler = nil
 		})
 
 		Convey("Should fail if there is unresolved variable in launch command", func() {
 			app.LaunchCommand = "./script --flag ${asd} --debug"
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.LaunchCommand = ""
 		})
 
@@ -442,24 +442,24 @@ func TestApplication(t *testing.T) {
 				"asd": "zxc",
 				"bar": "${baz}",
 			}
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.Scheduler = nil
 		})
 
 		Convey("Should fail if Marathon application creation fails", func() {
 			client.err = errors.New("boom!")
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
 		})
 
 		Convey("Should fail if Marathon application is not running or healthy for too long", func() {
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Failed to await")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Failed to await")
 		})
 
 		Convey("Should fail if there is unresolved variable in AfterScheduler script", func() {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
 			app.AfterScheduler = []string{"${bar}"}
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.AfterScheduler = nil
 			delete(client.applications, "foo")
 		})
@@ -468,7 +468,7 @@ func TestApplication(t *testing.T) {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
 			app.AfterScheduler = []string{"echozzz"}
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
 			app.AfterScheduler = nil
 			delete(client.applications, "foo")
 		})
@@ -477,7 +477,7 @@ func TestApplication(t *testing.T) {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
 			app.AfterTasks = []string{"${bar}"}
-			So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.AfterTasks = nil
 			delete(client.applications, "foo")
 		})
@@ -510,7 +510,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+				So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
 				delete(client.applications, "foo")
 			})
 
@@ -523,7 +523,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+				So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 				delete(client.applications, "foo")
 			})
 
@@ -536,7 +536,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+				So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
 				delete(client.applications, "foo")
 			})
 
@@ -549,7 +549,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+				So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
 				delete(client.applications, "foo")
 			})
 
@@ -562,7 +562,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+				So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
 				delete(client.applications, "foo")
 			})
 
@@ -575,7 +575,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+				So(app.RunMarathon(ctx, client, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
 				delete(client.applications, "foo")
 			})
 		})
@@ -583,7 +583,7 @@ func TestApplication(t *testing.T) {
 		Convey("Should succeed if everything is ok", func() {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
-			So(app.Run(ctx, client, new(MockStateStorage), 2), ShouldBeNil)
+			So(app.RunMarathon(ctx, client, new(MockStateStorage), 2), ShouldBeNil)
 			delete(client.applications, "foo")
 		})
 	})

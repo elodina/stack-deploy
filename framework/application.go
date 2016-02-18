@@ -18,12 +18,14 @@ import (
 type ApplicationState int
 
 const (
-	StateStaging ApplicationState = iota
+	StateIdle ApplicationState = iota
+	StateStaging
 	StateRunning
 	StateFailed
 )
 
 var ApplicationStates = map[ApplicationState]string{
+	StateIdle:    "IDLE",
 	StateStaging: "STAGING",
 	StateRunning: "RUNNING",
 	StateFailed:  "FAILED",
@@ -113,8 +115,8 @@ func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationSt
 	return true
 }
 
-func (a *Application) Run(context *StackContext, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
-	Logger.Debug("Running application: \n%s", a)
+func (a *Application) RunMarathon(context *StackContext, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
+	Logger.Debug("Running application using Marathon: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
 	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
@@ -184,6 +186,42 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, state
 
 			// a.storeTaskState(task, context)
 		}
+	}
+
+	a.resolveVariables(context)
+	err = ensureVariablesResolved(context, a.AfterTasks)
+	if err != nil {
+		return err
+	}
+	return a.executeCommands(a.AfterTasks, fmt.Sprintf("%s_after_tasks.sh", a.ID))
+}
+
+func (a *Application) RunMesos(context *StackContext, scheduler Scheduler, stateStorage StateStorage) error {
+	Logger.Debug("Running application using Mesos Scheduler: \n%s", a)
+	a.stateStorage = stateStorage
+	a.resolveVariables(context)
+	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
+	if err != nil {
+		return err
+	}
+	err = a.executeCommands(a.BeforeScheduler, fmt.Sprintf("%s_before_scheduler.sh", a.ID))
+	if err != nil {
+		return err
+	}
+
+	status := <-scheduler.RunApplication(a)
+	if status.Error != nil {
+		return status.Error
+	}
+
+	a.resolveVariables(context)
+	err = ensureVariablesResolved(context, a.AfterScheduler)
+	if err != nil {
+		return err
+	}
+	err = a.executeCommands(a.AfterScheduler, fmt.Sprintf("%s_after_scheduler.sh", a.ID))
+	if err != nil {
+		return err
 	}
 
 	a.resolveVariables(context)
@@ -436,4 +474,16 @@ func ensureStringVariableResolved(context *StackContext, value string) error {
 	}
 
 	return nil
+}
+
+type ApplicationRunStatus struct {
+	Application *Application
+	Error       error
+}
+
+func NewApplicationRunStatus(application *Application, err error) *ApplicationRunStatus {
+	return &ApplicationRunStatus{
+		Application: application,
+		Error:       err,
+	}
 }
