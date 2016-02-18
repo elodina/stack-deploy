@@ -22,10 +22,8 @@ import (
 	"github.com/elodina/go-mesos-utils/pretty"
 	"github.com/golang/protobuf/proto"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	util "github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -52,16 +50,12 @@ type Scheduler interface {
 
 type StackDeployScheduler struct {
 	*SchedulerConfig
-
-	driver          scheduler.SchedulerDriver
-	applications    map[string]*MesosApplicationContext
-	applicationLock sync.RWMutex
+	driver scheduler.SchedulerDriver
 }
 
 func NewScheduler(config *SchedulerConfig) *StackDeployScheduler {
 	return &StackDeployScheduler{
 		SchedulerConfig: config,
-		applications:    make(map[string]*MesosApplicationContext),
 	}
 }
 
@@ -135,18 +129,13 @@ func (s *StackDeployScheduler) OfferRescinded(driver scheduler.SchedulerDriver, 
 func (s *StackDeployScheduler) StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) {
 	Logger.Info("[StatusUpdate] %s", pretty.Status(status))
 
-	s.applicationLock.RLock()
-	defer s.applicationLock.RUnlock()
-
-	applicationID := applicationIDFromTaskID(status.GetTaskId().GetValue())
-	ctx, exists := s.applications[applicationID]
-	if !exists {
-		Logger.Warn("Got unexpected task state %s for application %s", pretty.Status(status), applicationID)
+	for _, runner := range MesosTaskRunners {
+		if runner.StatusUpdate(driver, status) {
+			return
+		}
 	}
 
-	if ctx.StatusUpdate(driver, status) {
-		delete(s.applications, applicationID)
-	}
+	Logger.Warn("Received status update that was not handled by any Mesos Task Runner: %s", pretty.Status(status))
 }
 
 func (s *StackDeployScheduler) FrameworkMessage(driver scheduler.SchedulerDriver, executor *mesos.ExecutorID, slave *mesos.SlaveID, message string) {
@@ -171,13 +160,11 @@ func (s *StackDeployScheduler) Shutdown(driver *scheduler.MesosSchedulerDriver) 
 }
 
 func (s *StackDeployScheduler) RunApplication(application *Application) <-chan *ApplicationRunStatus {
-	s.applicationLock.Lock()
+	Logger.Debug("Scheduler received run request for application %s", application.ID)
 	statusChan := make(chan *ApplicationRunStatus)
 
-	// first check if we already have such application, and if so return an error immediately
-	_, exists := s.applications[application.ID]
-	s.applicationLock.Unlock()
-	if exists {
+	runner, exists := MesosTaskRunners[application.Type]
+	if !exists {
 		go func() {
 			statusChan <- NewApplicationRunStatus(application, errors.New("Application already exists"))
 		}()
@@ -187,72 +174,30 @@ func (s *StackDeployScheduler) RunApplication(application *Application) <-chan *
 	// if number of slaves is less than number of applications to run return an error immediately
 	// TODO this should be removed once we support constraints, now it's like hardcoded hostname=unique
 	slaves := Mesos.GetSlaves()
-	if len(slaves) < application.getInstances() {
+	if len(slaves) < application.GetInstances() {
 		go func() {
 			statusChan <- NewApplicationRunStatus(application, errors.New("Number of instances exceeds available slaves number"))
 		}()
 		return statusChan
 	}
 
-	s.stageApplication(application, statusChan)
-	return statusChan
-}
-
-func (s *StackDeployScheduler) stageApplication(application *Application, statusChan chan *ApplicationRunStatus) {
-	s.applicationLock.Lock()
-	defer s.applicationLock.Unlock()
-
-	ctx := NewMesosApplicationContext()
-	ctx.Application = application
-	ctx.State = StateIdle
-	ctx.StatusChan = statusChan
-	ctx.InstancesLeftToRun = application.getInstances()
-
-	s.applications[application.ID] = ctx
+	return runner.StageApplication(application)
 }
 
 func (s *StackDeployScheduler) acceptOffer(driver scheduler.SchedulerDriver, offer *mesos.Offer) string {
 	declineReasons := make([]string, 0)
 
-	applications := s.applicationsWithState(StateIdle)
-	if len(applications) == 0 {
-		return "all tasks are running"
-	}
+	for name, runner := range MesosTaskRunners {
+		declineReason, err := runner.ResourceOffer(driver, offer)
+		if err != nil {
+			Logger.Warn("Error during processing resource offer %s by Mesos Task Runner '%s': %s", pretty.Offer(offer), name, err)
+			continue
+		}
 
-	for _, ctx := range applications {
-		declineReason := ctx.Matches(offer)
-		if declineReason == "" {
-			ctx.LaunchTask(driver, offer)
-			return ""
-		} else {
+		if declineReason != "" {
 			declineReasons = append(declineReasons, declineReason)
 		}
 	}
 
 	return strings.Join(declineReasons, ", ")
-}
-
-func (s *StackDeployScheduler) applicationsWithState(state ApplicationState) []*MesosApplicationContext {
-	s.applicationLock.RLock()
-	defer s.applicationLock.RUnlock()
-
-	applications := make([]*MesosApplicationContext, 0)
-	for id, applicationContext := range s.applications {
-		if applicationContext.State == state {
-			applications = append(applications, s.applications[id])
-		}
-	}
-
-	return applications
-}
-
-func getScalarResources(offer *mesos.Offer, resourceName string) float64 {
-	resources := 0.0
-	filteredResources := util.FilterResources(offer.Resources, func(res *mesos.Resource) bool {
-		return res.GetName() == resourceName
-	})
-	for _, res := range filteredResources {
-		resources += res.GetScalar().GetValue()
-	}
-	return resources
 }

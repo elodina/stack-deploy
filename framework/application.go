@@ -18,14 +18,12 @@ import (
 type ApplicationState int
 
 const (
-	StateIdle ApplicationState = iota
-	StateStaging
+	StateStaging ApplicationState = iota
 	StateRunning
 	StateFailed
 )
 
 var ApplicationStates = map[ApplicationState]string{
-	StateIdle:    "IDLE",
 	StateStaging: "STAGING",
 	StateRunning: "RUNNING",
 	StateFailed:  "FAILED",
@@ -115,8 +113,8 @@ func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationSt
 	return true
 }
 
-func (a *Application) RunMarathon(context *StackContext, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
-	Logger.Debug("Running application using Marathon: \n%s", a)
+func (a *Application) Run(context *StackContext, client marathon.Marathon, scheduler Scheduler, stateStorage StateStorage, maxWait int) error {
+	Logger.Debug("Running application: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
 	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
@@ -128,15 +126,16 @@ func (a *Application) RunMarathon(context *StackContext, client marathon.Maratho
 		return err
 	}
 
-	application := a.createApplication(context)
-	_, err = client.CreateApplication(application)
-	if err != nil {
-		return err
-	}
-
-	err = a.awaitRunningAndHealthy(client, maxWait)
-	if err != nil {
-		return err
+	if _, exists := MesosTaskRunners[a.Type]; exists {
+		err := a.runMesos(scheduler)
+		if err != nil {
+			return err
+		}
+	} else {
+		err := a.runMarathon(context, client, stateStorage, maxWait)
+		if err != nil {
+			return err
+		}
 	}
 
 	a.resolveVariables(context)
@@ -196,40 +195,28 @@ func (a *Application) RunMarathon(context *StackContext, client marathon.Maratho
 	return a.executeCommands(a.AfterTasks, fmt.Sprintf("%s_after_tasks.sh", a.ID))
 }
 
-func (a *Application) RunMesos(context *StackContext, scheduler Scheduler, stateStorage StateStorage) error {
-	Logger.Debug("Running application using Mesos Scheduler: \n%s", a)
-	a.stateStorage = stateStorage
-	a.resolveVariables(context)
-	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
-	if err != nil {
-		return err
-	}
-	err = a.executeCommands(a.BeforeScheduler, fmt.Sprintf("%s_before_scheduler.sh", a.ID))
+func (a *Application) runMarathon(context *StackContext, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
+	application := a.createApplication(context)
+	_, err := client.CreateApplication(application)
 	if err != nil {
 		return err
 	}
 
+	err = a.awaitRunningAndHealthy(client, maxWait)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *Application) runMesos(scheduler Scheduler) error {
 	status := <-scheduler.RunApplication(a)
 	if status.Error != nil {
 		return status.Error
 	}
 
-	a.resolveVariables(context)
-	err = ensureVariablesResolved(context, a.AfterScheduler)
-	if err != nil {
-		return err
-	}
-	err = a.executeCommands(a.AfterScheduler, fmt.Sprintf("%s_after_scheduler.sh", a.ID))
-	if err != nil {
-		return err
-	}
-
-	a.resolveVariables(context)
-	err = ensureVariablesResolved(context, a.AfterTasks)
-	if err != nil {
-		return err
-	}
-	return a.executeCommands(a.AfterTasks, fmt.Sprintf("%s_after_tasks.sh", a.ID))
+	return nil
 }
 
 func (a *Application) storeTaskState(task map[string]string, context *StackContext) error {
@@ -340,7 +327,7 @@ func (a *Application) createApplication(context *StackContext) *marathon.Applica
 	application := &marathon.Application{
 		ID:           a.ID,
 		Cmd:          a.getLaunchCommand(context),
-		Instances:    a.getInstances(),
+		Instances:    a.GetInstances(),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
 		Ports:        a.Ports,
@@ -383,7 +370,7 @@ func (a *Application) getLaunchCommand(context *StackContext) string {
 	return cmd
 }
 
-func (a *Application) getInstances() int {
+func (a *Application) GetInstances() int {
 	if a.Instances == "" {
 		return 1
 	}

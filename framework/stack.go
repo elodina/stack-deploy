@@ -195,23 +195,14 @@ func (s *Stack) runApplications(runningApps map[string]ApplicationState, context
 
 		if app.IsDependencySatisfied(runningApps) {
 			runningApps[app.ID] = StateStaging
-			if app.Type == "run-once" {
-				go s.runMesosApplication(app, context, scheduler, status)
-			} else {
-				go s.runMarathonApplication(app, context, client, status, maxWait)
-			}
+			go s.runApplication(app, context, client, scheduler, status, maxWait)
 		}
 	}
 }
 
-func (s *Stack) runMesosApplication(app *Application, context *StackContext, scheduler Scheduler, status chan *ApplicationRunStatus) {
-	err := app.RunMesos(context, scheduler, s.stateStorage)
-	status <- NewApplicationRunStatus(app, err)
-}
-
-func (s *Stack) runMarathonApplication(app *Application, context *StackContext, client marathon.Marathon,
-	status chan *ApplicationRunStatus, maxWait int) {
-	err := app.RunMarathon(context, client, s.stateStorage, maxWait)
+func (s *Stack) runApplication(app *Application, context *StackContext, client marathon.Marathon,
+	scheduler Scheduler, status chan *ApplicationRunStatus, maxWait int) {
+	err := app.Run(context, client, scheduler, s.stateStorage, maxWait)
 	if err != nil {
 		// TODO should remove the application if anything goes wrong
 	}

@@ -15,11 +15,22 @@ limitations under the License. */
 
 package framework
 
-import "github.com/gambol99/go-marathon"
+import (
+	"github.com/gambol99/go-marathon"
+	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/mesos/mesos-go/scheduler"
+)
 
 var TaskRunners map[string]TaskRunner
+var MesosTaskRunners map[string]MesosTaskRunner
 
 type TaskRunner interface {
 	FillContext(context *StackContext, application *Application, task marathon.Task) error
 	RunTask(context *StackContext, application *Application, task map[string]string) error
+}
+
+type MesosTaskRunner interface {
+	StageApplication(application *Application) <-chan *ApplicationRunStatus
+	ResourceOffer(driver scheduler.SchedulerDriver, offer *mesos.Offer) (string, error)
+	StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) bool
 }

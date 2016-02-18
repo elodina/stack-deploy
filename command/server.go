@@ -34,12 +34,14 @@ import (
 var Logger = log.NewDefaultLogger()
 
 type ServerCommand struct {
-	runners map[string]framework.TaskRunner
+	runners      map[string]framework.TaskRunner
+	mesosRunners map[string]framework.MesosTaskRunner
 }
 
-func NewServerCommand(runners map[string]framework.TaskRunner) *ServerCommand {
+func NewServerCommand(runners map[string]framework.TaskRunner, mesosRunners map[string]framework.MesosTaskRunner) *ServerCommand {
 	return &ServerCommand{
-		runners: runners,
+		runners:      runners,
+		mesosRunners: mesosRunners,
 	}
 }
 
@@ -75,6 +77,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	signal.Notify(ctrlc, os.Interrupt)
 
 	framework.TaskRunners = sc.runners
+	framework.MesosTaskRunners = sc.mesosRunners
 
 	framework.Mesos = framework.NewMesosState(schedulerConfig.Master)
 	err := framework.Mesos.Update()

@@ -13,23 +13,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-package framework
+package mesosrunners
 
 import (
 	"fmt"
+	utils "github.com/elodina/go-mesos-utils"
 	"github.com/elodina/go-mesos-utils/pretty"
+	"github.com/elodina/stack-deploy/framework"
 	"github.com/golang/protobuf/proto"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
-	"strings"
 	"sync"
 )
 
-type MesosApplicationContext struct {
-	Application *Application
-	State       ApplicationState
-	StatusChan  chan *ApplicationRunStatus
+type RunOnceApplicationContext struct {
+	Application *framework.Application
+	State       framework.ApplicationState
+	StatusChan  chan *framework.ApplicationRunStatus
 
 	InstancesLeftToRun int
 
@@ -37,13 +38,13 @@ type MesosApplicationContext struct {
 	stagedInstances map[string]mesos.TaskState
 }
 
-func NewMesosApplicationContext() *MesosApplicationContext {
-	return &MesosApplicationContext{
+func NewRunOnceApplicationContext() *RunOnceApplicationContext {
+	return &RunOnceApplicationContext{
 		stagedInstances: make(map[string]mesos.TaskState),
 	}
 }
 
-func (ctx *MesosApplicationContext) Matches(offer *mesos.Offer) string {
+func (ctx *RunOnceApplicationContext) Matches(offer *mesos.Offer) string {
 	ctx.lock.RLock()
 	defer ctx.lock.RUnlock()
 
@@ -55,18 +56,18 @@ func (ctx *MesosApplicationContext) Matches(offer *mesos.Offer) string {
 		return fmt.Sprintf("application instance is already staged/running on this host")
 	}
 
-	if ctx.Application.Cpu > getScalarResources(offer, "cpus") {
+	if ctx.Application.Cpu > utils.GetScalarResources(offer, utils.ResourceCpus) {
 		return "no cpus"
 	}
 
-	if ctx.Application.Mem > getScalarResources(offer, "mem") {
+	if ctx.Application.Mem > utils.GetScalarResources(offer, utils.ResourceMem) {
 		return "no mem"
 	}
 
 	return ""
 }
 
-func (ctx *MesosApplicationContext) LaunchTask(driver scheduler.SchedulerDriver, offer *mesos.Offer) {
+func (ctx *RunOnceApplicationContext) LaunchTask(driver scheduler.SchedulerDriver, offer *mesos.Offer) error {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 
@@ -74,10 +75,11 @@ func (ctx *MesosApplicationContext) LaunchTask(driver scheduler.SchedulerDriver,
 	ctx.stagedInstances[offer.GetHostname()] = mesos.TaskState_TASK_STAGING
 	taskInfo := ctx.newTaskInfo(offer)
 
-	driver.LaunchTasks([]*mesos.OfferID{offer.GetId()}, []*mesos.TaskInfo{taskInfo}, &mesos.Filters{RefuseSeconds: proto.Float64(10)})
+	_, err := driver.LaunchTasks([]*mesos.OfferID{offer.GetId()}, []*mesos.TaskInfo{taskInfo}, &mesos.Filters{RefuseSeconds: proto.Float64(10)})
+	return err
 }
 
-func (ctx *MesosApplicationContext) StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) bool {
+func (ctx *RunOnceApplicationContext) StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) bool {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 
@@ -87,26 +89,26 @@ func (ctx *MesosApplicationContext) StatusUpdate(driver scheduler.SchedulerDrive
 
 	switch status.GetState() {
 	case mesos.TaskState_TASK_RUNNING:
-		Logger.Debug("Task %s received status update in state %s", status.GetTaskId().GetValue(), status.GetState().String())
+		framework.Logger.Debug("Task %s received status update in state %s", status.GetTaskId().GetValue(), status.GetState().String())
 	case mesos.TaskState_TASK_LOST, mesos.TaskState_TASK_FAILED, mesos.TaskState_TASK_ERROR:
-		//TODO also kill all other running tasks
-		ctx.StatusChan <- NewApplicationRunStatus(ctx.Application, fmt.Errorf("Application %s failed to run on host %s with status %s: %s", ctx.Application.ID, hostname, status.GetState().String(), status.GetMessage()))
+		//TODO also kill all other running tasks sometime?
+		ctx.StatusChan <- framework.NewApplicationRunStatus(ctx.Application, fmt.Errorf("Application %s failed to run on host %s with status %s: %s", ctx.Application.ID, hostname, status.GetState().String(), status.GetMessage()))
 		return true
 	case mesos.TaskState_TASK_FINISHED, mesos.TaskState_TASK_KILLED:
 		if ctx.allTasksFinished() {
-			ctx.StatusChan <- NewApplicationRunStatus(ctx.Application, nil)
+			ctx.StatusChan <- framework.NewApplicationRunStatus(ctx.Application, nil)
 			return true
 		}
 	default:
-		Logger.Warn("Got unexpected task state %s", pretty.Status(status))
+		framework.Logger.Warn("Got unexpected task state %s", pretty.Status(status))
 	}
 
 	return false
 }
 
-func (ctx *MesosApplicationContext) newTaskInfo(offer *mesos.Offer) *mesos.TaskInfo {
+func (ctx *RunOnceApplicationContext) newTaskInfo(offer *mesos.Offer) *mesos.TaskInfo {
 	taskName := fmt.Sprintf("%s.%s", ctx.Application.ID, offer.GetHostname())
-	taskID := util.NewTaskID(fmt.Sprintf("%s|%s|%s", ctx.Application.ID, offer.GetHostname(), UUID()))
+	taskID := util.NewTaskID(fmt.Sprintf("%s|%s|%s", ctx.Application.ID, offer.GetHostname(), framework.UUID()))
 
 	return &mesos.TaskInfo{
 		Name:    proto.String(taskName),
@@ -123,44 +125,20 @@ func (ctx *MesosApplicationContext) newTaskInfo(offer *mesos.Offer) *mesos.TaskI
 	}
 }
 
-func (ctx *MesosApplicationContext) allTasksFinished() bool {
-	Logger.Debug("Checking if all tasks finished for application %s", ctx.Application.ID)
+func (ctx *RunOnceApplicationContext) allTasksFinished() bool {
+	framework.Logger.Debug("Checking if all tasks finished for application %s", ctx.Application.ID)
 
 	if ctx.InstancesLeftToRun != 0 {
-		Logger.Debug("%d tasks for application %s not yet staged", ctx.InstancesLeftToRun, ctx.Application.ID)
+		framework.Logger.Debug("%d tasks for application %s not yet staged", ctx.InstancesLeftToRun, ctx.Application.ID)
 		return false
 	}
 
 	for hostname, state := range ctx.stagedInstances {
 		if state != mesos.TaskState_TASK_FINISHED && state != mesos.TaskState_TASK_KILLED {
-			Logger.Debug("Task on hostname %s for application %s is not yet finished/killed", hostname, ctx.Application.ID)
+			framework.Logger.Debug("Task on hostname %s for application %s is not yet finished/killed", hostname, ctx.Application.ID)
 			return false
 		}
 	}
 
 	return true
-}
-
-func applicationIDFromTaskID(taskID string) string {
-	pipeIndex := strings.Index(taskID, "|")
-	if pipeIndex == -1 {
-		panic(fmt.Sprintf("Unexpected task ID %s", taskID))
-	}
-
-	return taskID[:pipeIndex]
-}
-
-func hostnameFromTaskID(taskID string) string {
-	pipeIndex := strings.Index(taskID, "|")
-	if pipeIndex == -1 {
-		panic(fmt.Sprintf("Unexpected task ID %s", taskID))
-	}
-
-	hostnameAndUUID := taskID[pipeIndex+1:]
-	pipeIndex = strings.Index(hostnameAndUUID, "|")
-	if pipeIndex == -1 {
-		panic(fmt.Sprintf("Unexpected task ID %s", taskID))
-	}
-
-	return hostnameAndUUID[:pipeIndex]
 }
