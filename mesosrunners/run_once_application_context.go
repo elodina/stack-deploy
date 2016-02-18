@@ -29,7 +29,6 @@ import (
 
 type RunOnceApplicationContext struct {
 	Application *framework.Application
-	State       framework.ApplicationState
 	StatusChan  chan *framework.ApplicationRunStatus
 
 	InstancesLeftToRun int
@@ -53,7 +52,7 @@ func (ctx *RunOnceApplicationContext) Matches(offer *mesos.Offer) string {
 	}
 
 	if _, exists := ctx.stagedInstances[offer.GetHostname()]; exists {
-		return fmt.Sprintf("application instance is already staged/running on this host")
+		return fmt.Sprintf("application instance is already staged/running on host %s", offer.GetHostname())
 	}
 
 	if ctx.Application.Cpu > utils.GetScalarResources(offer, utils.ResourceCpus) {
