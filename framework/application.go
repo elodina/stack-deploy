@@ -339,7 +339,7 @@ func (a *Application) getLaunchCommand(context *StackContext) string {
 	}
 	stackLabels := strings.Join(labelStrings, ";")
 	if stackLabels != "" {
-		env := fmt.Sprintf("STACK_LABELS=\"%s\" ", stackLabels)
+		env := fmt.Sprintf("export STACK_LABELS=\"%s\" && ", stackLabels)
 		cmd = env + cmd
 	}
 	return cmd
