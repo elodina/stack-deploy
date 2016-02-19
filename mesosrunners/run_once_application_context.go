@@ -109,6 +109,23 @@ func (ctx *RunOnceApplicationContext) newTaskInfo(offer *mesos.Offer) *mesos.Tas
 	taskName := fmt.Sprintf("%s.%s", ctx.Application.ID, offer.GetHostname())
 	taskID := util.NewTaskID(fmt.Sprintf("%s|%s|%s", ctx.Application.ID, offer.GetHostname(), framework.UUID()))
 
+	var URIs []*mesos.CommandInfo_URI
+	if len(ctx.Application.ArtifactURLs) > 0 || len(ctx.Application.AdditionalArtifacts) > 0 {
+		URIs = make([]*mesos.CommandInfo_URI, 0)
+		for _, uri := range ctx.Application.ArtifactURLs {
+			URIs = append(URIs, &mesos.CommandInfo_URI{
+				Value:   proto.String(uri),
+				Extract: proto.Bool(true),
+			})
+		}
+		for _, uri := range ctx.Application.AdditionalArtifacts {
+			URIs = append(URIs, &mesos.CommandInfo_URI{
+				Value:   proto.String(uri),
+				Extract: proto.Bool(true),
+			})
+		}
+	}
+
 	return &mesos.TaskInfo{
 		Name:    proto.String(taskName),
 		TaskId:  taskID,
@@ -120,6 +137,7 @@ func (ctx *RunOnceApplicationContext) newTaskInfo(offer *mesos.Offer) *mesos.Tas
 		Command: &mesos.CommandInfo{
 			Shell: proto.Bool(true),
 			Value: proto.String(ctx.Application.LaunchCommand),
+			Uris:  URIs,
 		},
 	}
 }

@@ -43,9 +43,8 @@ func TestRunOnceRunner(t *testing.T) {
 	})
 
 	Convey("Run once task runner", t, func() {
-		runner := NewRunOnceRunner()
-
 		Convey("should decline offers if no applications are staged", func() {
+			runner := NewRunOnceRunner()
 			declineReason, err := runner.ResourceOffer(nil, nil)
 
 			So(declineReason, ShouldEqual, "all tasks are running")
@@ -53,6 +52,7 @@ func TestRunOnceRunner(t *testing.T) {
 		})
 
 		Convey("should stage applications properly", func() {
+			runner := NewRunOnceRunner()
 			So(runner.applications, ShouldHaveLength, 0)
 
 			application := &framework.Application{
@@ -70,6 +70,95 @@ func TestRunOnceRunner(t *testing.T) {
 			So(runner.applications["foo"], ShouldNotBeNil)
 			So(runner.applications["foo"].InstancesLeftToRun, ShouldEqual, 3)
 			So(runner.applications["foo"].Application, ShouldEqual, application)
+		})
+
+		Convey("should decline offers if they do not match application needs", func() {
+			runner := NewRunOnceRunner()
+			runner.StageApplication(&framework.Application{
+				Type:          "foo",
+				ID:            "foo",
+				Cpu:           0.5,
+				Mem:           512,
+				Instances:     "3",
+				LaunchCommand: "sleep 10",
+			})
+
+			declineReason, err := runner.ResourceOffer(new(mesostest.MockSchedulerDriver), &mesos.Offer{
+				Hostname: proto.String("slave0"),
+			})
+
+			So(err, ShouldBeNil)
+			So(declineReason, ShouldNotBeEmpty)
+		})
+
+		Convey("should launch task if offer matches", func() {
+			runner := NewRunOnceRunner()
+			runner.StageApplication(&framework.Application{
+				Type:          "foo",
+				ID:            "foo",
+				Cpu:           0.5,
+				Mem:           512,
+				Instances:     "3",
+				LaunchCommand: "sleep 10",
+			})
+
+			driver := new(mesostest.MockSchedulerDriver)
+			offer := &mesos.Offer{
+				Hostname: proto.String("slave0"),
+				Resources: []*mesos.Resource{
+					util.NewScalarResource("cpus", 1.5),
+					util.NewScalarResource("mem", 2048),
+				},
+			}
+
+			declineReason, err := runner.ResourceOffer(driver, offer)
+
+			So(err, ShouldBeNil)
+			So(declineReason, ShouldBeEmpty)
+			So(driver.LaunchTasksCount, ShouldEqual, 1)
+		})
+
+		Convey("should not consume status update if it's not intended for it", func() {
+			runner := NewRunOnceRunner()
+			driver := new(mesostest.MockSchedulerDriver)
+
+			consumed := runner.StatusUpdate(driver, &mesos.TaskStatus{
+				TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+				State:  mesos.TaskState_TASK_RUNNING.Enum(),
+			})
+
+			So(consumed, ShouldBeFalse)
+		})
+
+		Convey("should consume status update if it's related to one of its applications", func() {
+			runner := NewRunOnceRunner()
+			statusChan := make(chan *framework.ApplicationRunStatus, 1)
+
+			runner.StageApplication(&framework.Application{
+				Type:          "foo",
+				ID:            "foo",
+				Cpu:           0.5,
+				Mem:           512,
+				Instances:     "3",
+				LaunchCommand: "sleep 10",
+			})
+			runner.applications["foo"].InstancesLeftToRun = 0
+			runner.applications["foo"].StatusChan = statusChan
+
+			driver := new(mesostest.MockSchedulerDriver)
+			consumed := runner.StatusUpdate(driver, &mesos.TaskStatus{
+				TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+				State:  mesos.TaskState_TASK_FINISHED.Enum(),
+			})
+
+			So(consumed, ShouldBeTrue)
+			So(runner.applications, ShouldBeEmpty) //should cleanup after application is done
+			select {
+			case sts := <-statusChan:
+				So(sts.Error, ShouldBeNil)
+			default:
+				t.Fail()
+			}
 		})
 	})
 }
@@ -161,6 +250,7 @@ func TestRunOnceApplicationContext(t *testing.T) {
 				Mem:           512,
 				Instances:     "3",
 				LaunchCommand: "sleep 10",
+				ArtifactURLs:  []string{"http://elodina.net"},
 			}
 
 			offer := &mesos.Offer{
@@ -177,6 +267,8 @@ func TestRunOnceApplicationContext(t *testing.T) {
 			So(taskInfo.GetCommand(), ShouldNotBeNil)
 			So(taskInfo.GetCommand().GetValue(), ShouldEqual, "sleep 10")
 			So(taskInfo.GetCommand().GetShell(), ShouldBeTrue)
+			So(taskInfo.GetCommand().GetUris(), ShouldHaveLength, 1)
+			So(taskInfo.GetCommand().GetUris()[0].GetValue(), ShouldEqual, "http://elodina.net")
 		})
 
 		Convey("should not consider all tasks finished", func() {
