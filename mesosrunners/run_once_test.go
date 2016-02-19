@@ -18,6 +18,7 @@ package mesosrunners
 import (
 	"testing"
 
+	mesostest "github.com/elodina/go-mesos-utils/testing"
 	"github.com/elodina/stack-deploy/framework"
 	"github.com/golang/protobuf/proto"
 	mesos "github.com/mesos/mesos-go/mesosproto"
@@ -222,5 +223,150 @@ func TestRunOnceApplicationContext(t *testing.T) {
 				So(ctx.InstancesLeftToRun, ShouldEqual, 0)
 			})
 		})
+
+		Convey("should launch task properly", func() {
+			ctx := NewRunOnceApplicationContext()
+			ctx.InstancesLeftToRun = 3
+			ctx.Application = &framework.Application{
+				Type:          "foo",
+				ID:            "foo",
+				Cpu:           0.5,
+				Mem:           512,
+				Instances:     "3",
+				LaunchCommand: "sleep 10",
+			}
+
+			driver := new(mesostest.MockSchedulerDriver)
+			offer := &mesos.Offer{
+				Hostname: proto.String("slave0"),
+				Resources: []*mesos.Resource{
+					util.NewScalarResource("cpus", 1.5),
+					util.NewScalarResource("mem", 2048),
+				},
+			}
+
+			err := ctx.LaunchTask(driver, offer)
+			So(err, ShouldBeNil)
+			So(driver.LaunchTasksCount, ShouldEqual, 1)
+			So(ctx.InstancesLeftToRun, ShouldEqual, 2)
+			So(ctx.stagedInstances, ShouldHaveLength, 1)
+			So(ctx.stagedInstances["slave0"], ShouldEqual, mesos.TaskState_TASK_STAGING)
+		})
+
+		Convey("should handle status updates", func() {
+			ctx := NewRunOnceApplicationContext()
+			ctx.InstancesLeftToRun = 3
+			ctx.Application = &framework.Application{
+				Type:          "foo",
+				ID:            "foo",
+				Cpu:           0.5,
+				Mem:           512,
+				Instances:     "3",
+				LaunchCommand: "sleep 10",
+			}
+			ctx.StatusChan = make(chan *framework.ApplicationRunStatus, 1)
+
+			driver := new(mesostest.MockSchedulerDriver)
+
+			Convey("running status should not send any application status and signal application done deploying", func() {
+				status := &mesos.TaskStatus{
+					TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+					State:  mesos.TaskState_TASK_RUNNING.Enum(),
+				}
+
+				appDone := ctx.StatusUpdate(driver, status)
+				So(appDone, ShouldBeFalse)
+
+				//should not receive any status
+				select {
+				case <-ctx.StatusChan:
+					t.Fail()
+				default:
+				}
+
+				So(ctx.stagedInstances, ShouldHaveLength, 1)
+				So(ctx.stagedInstances["slave0"], ShouldEqual, mesos.TaskState_TASK_RUNNING)
+			})
+
+			Convey("lost, failed and error statuses should result in error application status and signal application is done deploying", func() {
+				status := &mesos.TaskStatus{
+					TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+					State:  mesos.TaskState_TASK_LOST.Enum(),
+				}
+
+				testErrorStatus(t, ctx, driver, status)
+
+				status.State = mesos.TaskState_TASK_FAILED.Enum()
+				testErrorStatus(t, ctx, driver, status)
+
+				status.State = mesos.TaskState_TASK_ERROR.Enum()
+				testErrorStatus(t, ctx, driver, status)
+			})
+
+			Convey("finished status should result in no error and not send application status if there are unfinished instances", func() {
+				status := &mesos.TaskStatus{
+					TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+					State:  mesos.TaskState_TASK_FINISHED.Enum(),
+				}
+
+				appDone := ctx.StatusUpdate(driver, status)
+				So(appDone, ShouldBeFalse)
+
+				select {
+				case <-ctx.StatusChan:
+					t.Fail()
+				default:
+				}
+			})
+
+			Convey("finished status should result in no error and send successful application status", func() {
+				ctx.InstancesLeftToRun = 0
+				status := &mesos.TaskStatus{
+					TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+					State:  mesos.TaskState_TASK_FINISHED.Enum(),
+				}
+
+				appDone := ctx.StatusUpdate(driver, status)
+				So(appDone, ShouldBeTrue)
+
+				select {
+				case sts := <-ctx.StatusChan:
+					So(sts.Error, ShouldBeNil)
+				default:
+					t.Fail()
+				}
+			})
+
+			Convey("unknown statuses should be ignored", func() {
+				status := &mesos.TaskStatus{
+					TaskId: util.NewTaskID("foo|slave0|asd-asd-asd-asd-asd"),
+					State:  mesos.TaskState_TASK_STARTING.Enum(),
+				}
+
+				appDone := ctx.StatusUpdate(driver, status)
+				So(appDone, ShouldBeFalse)
+
+				select {
+				case <-ctx.StatusChan:
+					t.Fail()
+				default:
+				}
+			})
+		})
 	})
+}
+
+func testErrorStatus(t *testing.T, ctx *RunOnceApplicationContext, driver *mesostest.MockSchedulerDriver, status *mesos.TaskStatus) {
+	appDone := ctx.StatusUpdate(driver, status)
+	So(appDone, ShouldBeTrue)
+
+	select {
+	case sts := <-ctx.StatusChan:
+		So(sts.Error, ShouldNotBeNil)
+		So(sts.Error.Error(), ShouldContainSubstring, "failed to run on host")
+	default:
+		t.Fail()
+	}
+
+	So(ctx.stagedInstances["slave0"], ShouldEqual, status.GetState())
 }
