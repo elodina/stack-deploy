@@ -18,10 +18,12 @@ package framework
 import (
 	"fmt"
 
+	"errors"
 	"github.com/elodina/go-mesos-utils/pretty"
 	"github.com/golang/protobuf/proto"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/mesos/mesos-go/scheduler"
+	"strings"
 	"time"
 )
 
@@ -43,11 +45,11 @@ func NewSchedulerConfig() *SchedulerConfig {
 
 type Scheduler interface {
 	Start() error
+	RunApplication(application *Application) <-chan *ApplicationRunStatus
 }
 
 type StackDeployScheduler struct {
 	*SchedulerConfig
-
 	driver scheduler.SchedulerDriver
 }
 
@@ -112,7 +114,11 @@ func (s *StackDeployScheduler) ResourceOffers(driver scheduler.SchedulerDriver, 
 	Logger.Debug("[ResourceOffers] %s", pretty.Offers(offers))
 
 	for _, offer := range offers {
-		driver.DeclineOffer(offer.GetId(), &mesos.Filters{RefuseSeconds: proto.Float64(10)})
+		declineReason := s.acceptOffer(driver, offer)
+		if declineReason != "" {
+			driver.DeclineOffer(offer.GetId(), &mesos.Filters{RefuseSeconds: proto.Float64(10)})
+			Logger.Debug("Declined offer %s: %s", pretty.Offer(offer), declineReason)
+		}
 	}
 }
 
@@ -122,6 +128,14 @@ func (s *StackDeployScheduler) OfferRescinded(driver scheduler.SchedulerDriver, 
 
 func (s *StackDeployScheduler) StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) {
 	Logger.Info("[StatusUpdate] %s", pretty.Status(status))
+
+	for _, runner := range MesosTaskRunners {
+		if runner.StatusUpdate(driver, status) {
+			return
+		}
+	}
+
+	Logger.Warn("Received status update that was not handled by any Mesos Task Runner: %s", pretty.Status(status))
 }
 
 func (s *StackDeployScheduler) FrameworkMessage(driver scheduler.SchedulerDriver, executor *mesos.ExecutorID, slave *mesos.SlaveID, message string) {
@@ -143,4 +157,47 @@ func (s *StackDeployScheduler) Error(driver scheduler.SchedulerDriver, message s
 func (s *StackDeployScheduler) Shutdown(driver *scheduler.MesosSchedulerDriver) {
 	Logger.Info("Shutdown triggered, stopping driver")
 	driver.Stop(false)
+}
+
+func (s *StackDeployScheduler) RunApplication(application *Application) <-chan *ApplicationRunStatus {
+	Logger.Debug("Scheduler received run request for application %s", application.ID)
+	statusChan := make(chan *ApplicationRunStatus)
+
+	runner, exists := MesosTaskRunners[application.Type]
+	if !exists {
+		go func() {
+			statusChan <- NewApplicationRunStatus(application, errors.New("Application already exists"))
+		}()
+		return statusChan
+	}
+
+	// if number of slaves is less than number of applications to run return an error immediately
+	// TODO this should be removed once we support constraints, now it's like hardcoded hostname=unique
+	slaves := Mesos.GetSlaves()
+	if len(slaves) < application.GetInstances() {
+		go func() {
+			statusChan <- NewApplicationRunStatus(application, errors.New("Number of instances exceeds available slaves number"))
+		}()
+		return statusChan
+	}
+
+	return runner.StageApplication(application)
+}
+
+func (s *StackDeployScheduler) acceptOffer(driver scheduler.SchedulerDriver, offer *mesos.Offer) string {
+	declineReasons := make([]string, 0)
+
+	for name, runner := range MesosTaskRunners {
+		declineReason, err := runner.ResourceOffer(driver, offer)
+		if err != nil {
+			Logger.Warn("Error during processing resource offer %s by Mesos Task Runner '%s': %s", pretty.Offer(offer), name, err)
+			continue
+		}
+
+		if declineReason != "" {
+			declineReasons = append(declineReasons, declineReason)
+		}
+	}
+
+	return strings.Join(declineReasons, ", ")
 }

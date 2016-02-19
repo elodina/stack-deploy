@@ -27,7 +27,7 @@ func (*MockStorage) GetStack(name string) (*Stack, error) {
 
 type FakeStack struct{}
 
-func (*FakeStack) Run(*RunRequest, *StackContext, marathon.Marathon, StateStorage) (*StackContext, error) {
+func (*FakeStack) Run(*RunRequest, *StackContext, marathon.Marathon, Scheduler, StateStorage) (*StackContext, error) {
 	return &StackContext{}, nil
 }
 func (*FakeStack) GetStack() *Stack {
@@ -102,4 +102,8 @@ type MockScheduler struct {
 
 func (ms *MockScheduler) Start() error {
 	return ms.startErr
+}
+
+func (ms *MockScheduler) RunApplication(app *Application) <-chan *ApplicationRunStatus {
+	return nil
 }
