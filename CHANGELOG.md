@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.0.0
+
+New Features:
+
+- Added run-once tasks
+
 #### Version 0.2.1.0
 
 New Features:
@@ -26,7 +32,6 @@ Improvements:
 - Test coverage
 - Readme for task runners
 - Fixed some data races
-
 
 #### Version 0.1.0.0
 
