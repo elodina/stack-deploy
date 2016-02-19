@@ -14,7 +14,7 @@ stack-deploy
 * [Listing stacks](#listing-stacks)
 * [Showing stacks](#showing-stacks)
 * [Running stacks](#running-stacks)
-* [Run-once tasks](#run---once-tasks)
+* [Run-once tasks](#run-once-tasks)
 * [Minimal stack examples](#minimal-stack-examples)
 * [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
 
