@@ -14,6 +14,7 @@ stack-deploy
 * [Listing stacks](#listing-stacks)
 * [Showing stacks](#showing-stacks)
 * [Running stacks](#running-stacks)
+* [Run-once tasks](#run---once-tasks)
 * [Minimal stack examples](#minimal-stack-examples)
 * [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
 
@@ -125,14 +126,21 @@ Stack is a YAML file that contains information about Applications that should be
 `cpu` - [`double`] - amount of CPUs for application scheduler.    
 `mem` - [`double`] - amount of memory for application scheduler.    
 `ports` - [`array[int]`] - ports to accept for application scheduler. Can be left empty to accept any offered port.    
+`instances` - [`string`] - number of application instances to run. Valid is any number between 1 to number of slaves, or `all` to run on all available slaves. Defaults to `1`.    
+`constraints` - [`array[array[string]]`] - Marathon application constraints. Detailed info [here](https://github.com/mesosphere/marathon/blob/master/docs/docs/constraints.md).    
 `user` - [`string`] - Mesos user that will be used to run the application. Defaults to current system user if not set.    
 `healthcheck` - [`string`] - URL to perform healthchecks. Optional but highly recommended.    
 `launch_command` - [`string`] - launch command for application scheduler. The scheduler flags should not be set here.    
 `artifact_urls` - [`array[string]`] - artifacts to be downloaded before running the application scheduler.    
 `additional_artifacts` - [`array[string]`] - additional artifacts to be downloaded before running the application scheduler. This can be used to avoid overriding the artifact list in child stacks. All additional artifacts will be appended to artifact urls list.    
 `scheduler` - [`map[string]string`] - scheduler configurations. Everything specified in these configurations will be appended to `launch_command` in form `--k v`.    
-`tasks` - [`map[string]map[string]string`] - ordered map of task configurations. Map length defines the number of separate tasks launched for this application. It is up to `TaskRunner` to decide how to use information contained in each task configuration.
-`dependencies` - [`array[string]`] - application dependencies. The application in stack won't be run until all its dependencies are satisfied. E.g. applications without dependencies will be launched first, then others with resolved dependencies.
+`tasks` - [`map[string]map[string]string`] - ordered map of task configurations. Map length defines the number of separate tasks launched for this application. It is up to `TaskRunner` to decide how to use information contained in each task configuration.    
+`dependencies` - [`array[string]`] - application dependencies. The application in stack won't be run until all its dependencies are satisfied. E.g. applications without dependencies will be launched first, then others with resolved dependencies.    
+`before_scheduler` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox before running `launch_command`.     
+`after_scheduler` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running `launch_command`.     
+`before_task` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox before running each task in `tasks`.     
+`after_task` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running each task in `tasks`.     
+`after_tasks` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running all tasks in `tasks`.     
 
 Stack inheritance
 ---------------------
@@ -253,6 +261,31 @@ Available flags:
 `--zone` - [empty string] - zone to run stack in.    
 `--max.wait` - [`600`] - maximum time in seconds to wait for each application in a stack to become running and healthy.    
 `--api` - [`http://127.0.0.1:4200`] - stack-deploy server address.    
+
+Run-once tasks
+-----------------
+
+Run-once tasks are a special type (for now) of tasks which are run without using Marathon. In future, potentially, stack-deploy will stop depending on Marathon at all, but that's a long path.
+
+Run-once tasks are run exactly once and are not restarted after termination unlike Marathon tasks. This is useful for installing some additional software on slaves, running builds etc.
+
+The number of run-once tasks is controlled using `instances` field in each application, which can be any number between 1 and number of slaves, or `all` meaning "number of slaves" instances.
+
+An example of a stack with run once task could be the following:
+
+```
+name: test.run.once
+applications:
+  test-run-once:
+    type: "run-once" #this is a special application type that should be used for run-once tasks.
+    id: test-run-once
+    cpu: 0.1 # CPUs and memory for each instance of a task
+    mem: 512
+    instances: all #Run on all available slaves
+    launch_command: "sleep 30 && echo done!"
+```
+
+A run-once application is considered successful if all its tasks returned with status code 0. If any task returns with non-zero exit code, the whole application is considered failed and tasks are not retried. Stack deployment then stops immediately.
 
 Minimal stack examples
 ----------------------------
