@@ -6,12 +6,13 @@ import (
 
 	"github.com/elodina/stack-deploy/command"
 	"github.com/elodina/stack-deploy/framework"
+	"github.com/elodina/stack-deploy/mesosrunners"
 	"github.com/elodina/stack-deploy/runners"
 	"github.com/mitchellh/cli"
 )
 
 func main() {
-	cli := cli.NewCLI("stack-deploy", "0.2.1.0")
+	cli := cli.NewCLI("stack-deploy", "0.3.0.0")
 	cli.Args = os.Args[1:]
 	cli.Commands = commands()
 
@@ -27,7 +28,7 @@ func main() {
 func commands() map[string]cli.CommandFactory {
 	return map[string]cli.CommandFactory{
 		"server": func() (cli.Command, error) {
-			return command.NewServerCommand(taskRunners), nil
+			return command.NewServerCommand(taskRunners, mesosTaskRunners), nil
 		},
 		"ping": func() (cli.Command, error) {
 			return new(command.PingCommand), nil
@@ -69,4 +70,8 @@ var taskRunners map[string]framework.TaskRunner = map[string]framework.TaskRunne
 	"syslog-mesos-0.1.x":          new(runners.SyslogTaskRunner),
 	"zipkin-mesos-0.1.x":          new(runners.ZipkinTaskRunner),
 	"go-kafka-client-mesos-0.3.x": new(runners.GoKafkaClientTaskRunner),
+}
+
+var mesosTaskRunners map[string]framework.MesosTaskRunner = map[string]framework.MesosTaskRunner{
+	"run-once": mesosrunners.NewRunOnceRunner(),
 }

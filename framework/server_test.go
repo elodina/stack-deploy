@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -24,9 +25,10 @@ func TestNewApiServer(t *testing.T) {
 		storage := &MockStorage{}
 		userStorage := &MockUserStorage{}
 		stateStorage := &MockStateStorage{}
+		scheduler := &MockScheduler{}
 
 		Convey("When creating new API Server", func() {
-			server := NewApiServer(api, marathonClient, nil, storage, userStorage, stateStorage)
+			server := NewApiServer(api, marathonClient, nil, storage, userStorage, stateStorage, scheduler)
 
 			Convey("It should return not nil server", func() {
 				So(server, ShouldNotBeNil)
@@ -43,6 +45,13 @@ func TestNewApiServer(t *testing.T) {
 			})
 
 			Convey("When starting second API server", func() {
+				Convey("It should panic", func() {
+					So(func() { server.Start() }, ShouldPanic)
+				})
+			})
+
+			Convey("When server Mesos scheduler cannot start", func() {
+				scheduler.startErr = errors.New("boom!")
 				Convey("It should panic", func() {
 					So(func() { server.Start() }, ShouldPanic)
 				})

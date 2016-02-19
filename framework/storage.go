@@ -13,7 +13,7 @@ import (
 )
 
 type Runner interface {
-	Run(*RunRequest, *StackContext, marathon.Marathon, StateStorage) (*StackContext, error)
+	Run(*RunRequest, *StackContext, marathon.Marathon, Scheduler, StateStorage) (*StackContext, error)
 	GetStack() *Stack
 }
 

@@ -3,6 +3,7 @@ package framework
 import (
 	"fmt"
 	"github.com/elodina/pyrgus/log"
+	uuid "github.com/satori/go.uuid"
 	"gopkg.in/yaml.v2"
 )
 
@@ -39,4 +40,8 @@ func MapSliceToMap(slice yaml.MapSlice) map[string]string {
 	}
 
 	return m
+}
+
+func UUID() string {
+	return uuid.NewV4().String()
 }

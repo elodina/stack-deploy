@@ -6,7 +6,6 @@ import (
 
 	"encoding/json"
 	"github.com/gocql/gocql"
-	uuid "github.com/satori/go.uuid"
 )
 
 type UserRole int
@@ -169,10 +168,6 @@ func (cus CassandraUserStorage) prepareQuery(query string) string {
 
 func sha(key string) string {
 	return fmt.Sprintf("%x", sha1.Sum([]byte(key)))
-}
-
-func UUID() string {
-	return uuid.NewV4().String()
 }
 
 func (u *User) UnmarshalJSON(data []byte) error {

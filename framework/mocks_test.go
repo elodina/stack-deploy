@@ -27,7 +27,7 @@ func (*MockStorage) GetStack(name string) (*Stack, error) {
 
 type FakeStack struct{}
 
-func (*FakeStack) Run(*RunRequest, *StackContext, marathon.Marathon, StateStorage) (*StackContext, error) {
+func (*FakeStack) Run(*RunRequest, *StackContext, marathon.Marathon, Scheduler, StateStorage) (*StackContext, error) {
 	return &StackContext{}, nil
 }
 func (*FakeStack) GetStack() *Stack {
@@ -94,3 +94,16 @@ type FakeMesos struct{}
 
 func (FakeMesos) Update() error               { return nil }
 func (FakeMesos) GetActivatedSlaves() float64 { return 0 }
+func (FakeMesos) GetSlaves() []Slave          { return nil }
+
+type MockScheduler struct {
+	startErr error
+}
+
+func (ms *MockScheduler) Start() error {
+	return ms.startErr
+}
+
+func (ms *MockScheduler) RunApplication(app *Application) <-chan *ApplicationRunStatus {
+	return nil
+}

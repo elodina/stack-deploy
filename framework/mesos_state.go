@@ -28,11 +28,13 @@ var Mesos MesosStater
 type MesosStater interface {
 	Update() error
 	GetActivatedSlaves() float64
+	GetSlaves() []Slave
 }
 
 //TODO extend this struct when necessary
 type MesosState struct {
 	ActivatedSlaves float64 `json:"activated_slaves"`
+	Slaves          []Slave `json:"slaves"`
 
 	master string
 	lock   sync.Mutex
@@ -54,6 +56,10 @@ func NewMesosState(master string) *MesosState {
 
 func (ms *MesosState) GetActivatedSlaves() float64 {
 	return ms.ActivatedSlaves
+}
+
+func (ms *MesosState) GetSlaves() []Slave {
+	return ms.Slaves
 }
 
 func (ms *MesosState) Update() error {
@@ -82,5 +88,24 @@ func (ms *MesosState) Update() error {
 		return err
 	}
 
+	Logger.Debug("Updated mesos state. New state: %s", ms)
 	return nil
+}
+
+func (ms *MesosState) String() string {
+	js, err := json.MarshalIndent(ms, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+
+	return string(js)
+}
+
+type Slave struct {
+	Active     bool                   `json:"active"`
+	Attributes map[string]string      `json:"attributes"`
+	Hostname   string                 `json:"hostname"`
+	ID         string                 `json:"id"`
+	PID        string                 `json:"pid"`
+	Resources  map[string]interface{} `json:"resources"`
 }

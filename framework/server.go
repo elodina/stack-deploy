@@ -18,9 +18,11 @@ type StackDeployServer struct {
 	storage         Storage
 	stateStorage    StateStorage
 	userStorage     UserStorage
+	scheduler       Scheduler
 }
 
-func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables map[string]string, storage Storage, userStorage UserStorage, stateStorage StateStorage) *StackDeployServer {
+func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables map[string]string, storage Storage, userStorage UserStorage, stateStorage StateStorage,
+	scheduler Scheduler) *StackDeployServer {
 	if strings.HasPrefix(api, "http://") {
 		api = api[len("http://"):]
 	}
@@ -31,6 +33,7 @@ func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables 
 		storage:         storage,
 		stateStorage:    stateStorage,
 		userStorage:     userStorage,
+		scheduler:       scheduler,
 	}
 	return server
 }
@@ -47,8 +50,13 @@ func (ts *StackDeployServer) Start() {
 
 	http.HandleFunc("/createlayer", ts.Auth(ts.CreateLayerHandler))
 
+	err := ts.scheduler.Start()
+	if err != nil {
+		panic(err)
+	}
+
 	Logger.Info("Start API Server on: %s", ts.api)
-	err := http.ListenAndServe(ts.api, nil)
+	err = http.ListenAndServe(ts.api, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -306,7 +314,7 @@ func (ts *StackDeployServer) runStack(request *RunRequest, context *StackContext
 	}
 
 	Logger.Info("Running stack %s in zone '%s' and context %s", request.Name, request.Zone, context)
-	return runner.Run(request, context, ts.marathonClient, ts.stateStorage)
+	return runner.Run(request, context, ts.marathonClient, ts.scheduler, ts.stateStorage)
 }
 
 func layerToInt(layer string) (int, error) {

@@ -419,7 +419,7 @@ func (r *marathonClient) WaitOnApplication(name string, timeout time.Duration) e
 		}()
 		for !flick.IsSwitched() {
 			app, err := r.Application(name)
-			if apiErr, ok := err.(*APIError); ok && apiErr.ErrCode == ErrCodeNotFound {
+			if err != nil && err != ErrDoesNotExist {
 				continue
 			}
 			if err == nil && app.AllTaskRunning() {
