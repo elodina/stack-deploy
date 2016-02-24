@@ -188,3 +188,29 @@ func (u *User) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
+type NoopUserStorage struct{}
+
+func (s *NoopUserStorage) SaveUser(User) error {
+	return nil
+}
+
+func (s *NoopUserStorage) GetUser(string) (*User, error) {
+	return nil, nil
+}
+
+func (s *NoopUserStorage) CheckKey(string, string) (bool, error) {
+	return true, nil
+}
+
+func (s *NoopUserStorage) IsAdmin(string) (bool, error) {
+	return true, nil
+}
+
+func (s *NoopUserStorage) CreateUser(string, UserRole) (string, error) {
+	return "", nil
+}
+
+func (s *NoopUserStorage) RefreshToken(string) (string, error) {
+	return "", nil
+}

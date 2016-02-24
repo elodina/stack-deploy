@@ -17,6 +17,7 @@ stack-deploy
 * [Run-once tasks](#run-once-tasks)
 * [Minimal stack examples](#minimal-stack-examples)
 * [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
+* [Developer Mode](#developer-mode)
 
 [Changelog](https://github.com/elodina/stack-deploy/blob/master/CHANGELOG.md)
 
@@ -64,7 +65,8 @@ Available flags:
 `--framework.name` - [`stack-deploy`] - Mesos framework name.    
 `--framework.role` - [`*`] - Mesos framework role.    
 `--failover.timeout` - [`168 * time.Hour`] - Mesos framework failover timeout. Defaults to 1 week.    
-`--debug` - [`false`] - Flag for debug mode.
+`--debug` - [`false`] - Flag for debug mode.    
+`--dev` - [`false`] - Flag for [developer mode](#developer-mode).
 
 To check the server is started, run:
 ```
@@ -74,6 +76,9 @@ Pong
 
 First Start and User Management
 ---------------------------
+
+NOTE: this does not apply for [developer mode](#developer-mode).
+
 If you are running stack-deploy on empty storage (first start), admin user will be created and token will be generated and print to stdout:
 ```
 ***
@@ -291,6 +296,15 @@ Minimal stack examples
 ----------------------------
 
 Minimal stack examples are located in `stacks` directory in this repository.
+
+Developer mode
+------------------
+
+Stack-deploy supports running the server in developer mode. **DO NOT** use this mode in production. Differences in developer mode are the following:
+
+1. Cassandra is not required - all stacks will be kept in memory. Thus failovers will lead to stack loss.    
+2. No authentication required - `SD_USER` and `SD_KEY` are ignored.    
+3. Mesos failover timeout set to 0 - framework will unregister and kill all run-once tasks once stack-deploy server shuts down.
 
 Example Usage
 -------------
