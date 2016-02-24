@@ -6,6 +6,10 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/davecgh/go-spew/spew",
+			"Rev": "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d"
+		},
+		{
 			"ImportPath": "github.com/donovanhide/eventsource",
 			"Rev": "8c5962c7c1f7c559669b83d28370b5003c6a8a7f"
 		},
@@ -20,6 +24,14 @@
 		},
 		{
 			"ImportPath": "github.com/elodina/go-mesos-utils",
+			"Rev": "efd5b66151f72a72432e31dec5384050fb945423"
+		},
+		{
+			"ImportPath": "github.com/elodina/go-mesos-utils/pretty",
+			"Rev": "efd5b66151f72a72432e31dec5384050fb945423"
+		},
+		{
+			"ImportPath": "github.com/elodina/go-mesos-utils/testing",
 			"Rev": "efd5b66151f72a72432e31dec5384050fb945423"
 		},
 		{
@@ -49,6 +61,21 @@
 			"Rev": "addcbf26229589fd12444c21315ea2e398a5265c"
 		},
 		{
+			"ImportPath": "github.com/gocql/gocql/internal/lru",
+			"Comment": "1st_gen_framing-378-gaddcbf2",
+			"Rev": "addcbf26229589fd12444c21315ea2e398a5265c"
+		},
+		{
+			"ImportPath": "github.com/gocql/gocql/internal/murmur",
+			"Comment": "1st_gen_framing-378-gaddcbf2",
+			"Rev": "addcbf26229589fd12444c21315ea2e398a5265c"
+		},
+		{
+			"ImportPath": "github.com/gocql/gocql/internal/streams",
+			"Comment": "1st_gen_framing-378-gaddcbf2",
+			"Rev": "addcbf26229589fd12444c21315ea2e398a5265c"
+		},
+		{
 			"ImportPath": "github.com/gogo/protobuf/proto",
 			"Comment": "v0.1-125-g82d16f7",
 			"Rev": "82d16f734d6d871204a3feb1a73cb220cc92574c"
@@ -70,6 +97,11 @@
 			"Rev": "2a60fc2ba6c19de80291203597d752e9ba58e4c0"
 		},
 		{
+			"ImportPath": "github.com/gopherjs/gopherjs/js",
+			"Comment": "go1.5-6-gf8510c9",
+			"Rev": "f8510c9aef19750ec5a1178b33932a7f9defd197"
+		},
+		{
 			"ImportPath": "github.com/hailocab/go-hostpool",
 			"Rev": "0637eae892be221164aff5fcbccc57171aea6406"
 		},
@@ -83,7 +115,32 @@
 			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
 		},
 		{
+			"ImportPath": "github.com/mesos/mesos-go/auth/callback",
+			"Comment": "v0.0.2",
+			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/auth/sasl",
+			"Comment": "v0.0.2",
+			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/auth/sasl/mech",
+			"Comment": "v0.0.2",
+			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/auth/sasl/mech/crammd5",
+			"Comment": "v0.0.2",
+			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
+		},
+		{
 			"ImportPath": "github.com/mesos/mesos-go/detector",
+			"Comment": "v0.0.2",
+			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/detector/zoo",
 			"Comment": "v0.0.2",
 			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
 		},
@@ -94,6 +151,11 @@
 		},
 		{
 			"ImportPath": "github.com/mesos/mesos-go/mesosutil",
+			"Comment": "v0.0.2",
+			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/mesosutil/process",
 			"Comment": "v0.0.2",
 			"Rev": "50c845244e186d9d9573f5295343cb97a320bb9c"
 		},
@@ -122,6 +184,10 @@
 			"Rev": "cd53251766d76cf1969596428dc09c7b97956eeb"
 		},
 		{
+			"ImportPath": "github.com/pmezard/go-difflib/difflib",
+			"Rev": "792786c7400a136282c1664665ae0a8db921c6c2"
+		},
+		{
 			"ImportPath": "github.com/samuel/go-zookeeper/zk",
 			"Rev": "218e9c81c0dd8b3b18172b2bbfad92cc7d6db55f"
 		},
@@ -135,9 +201,28 @@
 			"Rev": "edb6e295a22c57a2aa353b2f0729b6eff9f9f4b7"
 		},
 		{
+			"ImportPath": "github.com/smartystreets/assertions/internal/oglematchers",
+			"Comment": "1.5.0-406-gedb6e29",
+			"Rev": "edb6e295a22c57a2aa353b2f0729b6eff9f9f4b7"
+		},
+		{
 			"ImportPath": "github.com/smartystreets/goconvey/convey",
 			"Comment": "1.6.0-9-ga2d5d78",
 			"Rev": "a2d5d788f3afbce0989463251ccc5492fad832df"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/goconvey/convey/gotest",
+			"Comment": "1.6.0-9-ga2d5d78",
+			"Rev": "a2d5d788f3afbce0989463251ccc5492fad832df"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/goconvey/convey/reporting",
+			"Comment": "1.6.0-9-ga2d5d78",
+			"Rev": "a2d5d788f3afbce0989463251ccc5492fad832df"
+		},
+		{
+			"ImportPath": "github.com/stretchr/objx",
+			"Rev": "1a9d0bb9f541897e62256577b352fdbc1fb4fd94"
 		},
 		{
 			"ImportPath": "github.com/stretchr/testify/assert",
@@ -146,21 +231,6 @@
 		},
 		{
 			"ImportPath": "github.com/stretchr/testify/mock",
-			"Comment": "v1.1.3-2-g9f9027f",
-			"Rev": "9f9027faeb0dad515336ed2f28317f9f8f527ab4"
-		},
-		{
-			"ImportPath": "github.com/stretchr/testify/vendor/github.com/davecgh/go-spew/spew",
-			"Comment": "v1.1.3-2-g9f9027f",
-			"Rev": "9f9027faeb0dad515336ed2f28317f9f8f527ab4"
-		},
-		{
-			"ImportPath": "github.com/stretchr/testify/vendor/github.com/pmezard/go-difflib/difflib",
-			"Comment": "v1.1.3-2-g9f9027f",
-			"Rev": "9f9027faeb0dad515336ed2f28317f9f8f527ab4"
-		},
-		{
-			"ImportPath": "github.com/stretchr/testify/vendor/github.com/stretchr/objx",
 			"Comment": "v1.1.3-2-g9f9027f",
 			"Rev": "9f9027faeb0dad515336ed2f28317f9f8f527ab4"
 		},
