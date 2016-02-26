@@ -283,9 +283,9 @@ func NewInMemoryStorage() *InMemoryStorage {
 }
 
 func (s *InMemoryStorage) GetAll() ([]*Stack, error) {
-	stacks := make([]*Stack, len(s.stacks))
-	for idx, stack := range stacks {
-		stacks[idx] = stack
+	stacks := make([]*Stack, 0)
+	for _, stack := range s.stacks {
+		stacks = append(stacks, stack)
 	}
 
 	return stacks, nil

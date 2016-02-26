@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.1.1
+
+Fixes:
+
+- Fixed broken list command in developer mode
+
 #### Version 0.3.1.0
 
 New Features:
