@@ -29,6 +29,7 @@ import (
 	"github.com/elodina/pyrgus/log"
 	"github.com/elodina/stack-deploy/framework"
 	marathon "github.com/gambol99/go-marathon"
+	"github.com/gocql/gocql"
 )
 
 var Logger = log.NewDefaultLogger()
@@ -58,6 +59,7 @@ func (sc *ServerCommand) Run(args []string) int {
 		connectRetries = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
 		connectBackoff = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
 		debug          = flags.Bool("debug", false, "Flag for debug mode")
+		dev            = flags.Bool("dev", false, "Flag for developer mode")
 		variables      = make(vars)
 	)
 	flags.StringVar(&schedulerConfig.Master, "master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
@@ -109,19 +111,33 @@ func (sc *ServerCommand) Run(args []string) int {
 		Logger.Info("Cassandra connect after resolving: %s", *cassandra)
 	}
 
-	storage, connection, err := framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff)
-	if err != nil {
-		panic(err)
-	}
+	var storage framework.Storage
+	var userStorage framework.UserStorage
+	var stateStorage framework.StateStorage
+	var key string
+	if !*dev {
+		var connection *gocql.Session
+		var err error
+		storage, connection, err = framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff)
+		if err != nil {
+			panic(err)
+		}
 
-	userStorage, key, err := framework.NewCassandraUserStorage(connection, *keyspace)
-	if err != nil {
-		panic(err)
-	}
+		userStorage, key, err = framework.NewCassandraUserStorage(connection, *keyspace)
+		if err != nil {
+			panic(err)
+		}
 
-	stateStorage, err := framework.NewCassandraStateStorage(connection, *keyspace)
-	if err != nil {
-		panic(err)
+		stateStorage, err = framework.NewCassandraStateStorage(connection, *keyspace)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		Logger.Warn("Starting in developer mode. DO NOT use this in production!")
+		schedulerConfig.FailoverTimeout = time.Duration(0)
+		storage = framework.NewInMemoryStorage()
+		userStorage = new(framework.NoopUserStorage)
+		stateStorage = new(framework.NoopStateStorage)
 	}
 
 	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler)
