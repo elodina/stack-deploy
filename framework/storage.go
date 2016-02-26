@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"errors"
 	marathon "github.com/gambol99/go-marathon"
 	"github.com/gocql/gocql"
 	yaml "gopkg.in/yaml.v2"
@@ -269,4 +270,128 @@ func (cs *CassandraStorage) exists(name string) (bool, error) {
 	}
 
 	return count > 0, nil
+}
+
+type InMemoryStorage struct {
+	stacks map[string]*Stack
+}
+
+func NewInMemoryStorage() *InMemoryStorage {
+	return &InMemoryStorage{
+		stacks: make(map[string]*Stack),
+	}
+}
+
+func (s *InMemoryStorage) GetAll() ([]*Stack, error) {
+	stacks := make([]*Stack, len(s.stacks))
+	for idx, stack := range stacks {
+		stacks[idx] = stack
+	}
+
+	return stacks, nil
+}
+
+func (s *InMemoryStorage) GetStack(name string) (*Stack, error) {
+	stack, exists := s.stacks[name]
+	if !exists {
+		return nil, errors.New("Stack does not exist")
+	}
+
+	return stack, nil
+}
+
+func (s *InMemoryStorage) GetStackRunner(name string) (Runner, error) {
+	return s.GetStack(name)
+}
+
+func (s *InMemoryStorage) StoreStack(stack *Stack) error {
+	_, exists := s.stacks[stack.Name]
+	if exists {
+		return errors.New("Stack already exists")
+	}
+
+	s.stacks[stack.Name] = stack
+	return nil
+}
+
+func (s *InMemoryStorage) RemoveStack(name string, force bool) error {
+	_, exists := s.stacks[name]
+	if !exists {
+		return errors.New("Stack does not exist")
+	}
+
+	return s.remove(name, force)
+}
+
+func (s *InMemoryStorage) Init() error {
+	return nil
+}
+
+func (s *InMemoryStorage) GetLayersStack(name string) (Merger, error) {
+	zone, err := s.GetLayer(name)
+	if err != nil {
+		return nil, err
+	}
+	if zone.Stack.From == "" {
+		return zone.Stack, nil
+	}
+	cluster, err := s.GetLayer(zone.Stack.From)
+	if err != nil {
+		return nil, err
+	}
+	if cluster.Stack.From == "" {
+		return cluster.Stack, nil
+	}
+	datacenter, err := s.GetLayer(cluster.Stack.From)
+	if err != nil {
+		return nil, err
+	}
+	err = datacenter.Merge(cluster)
+	if err != nil {
+		return nil, err
+	}
+	err = datacenter.Merge(zone)
+	if err != nil {
+		return nil, err
+	}
+	return datacenter.Stack, nil
+}
+
+func (s *InMemoryStorage) GetLayer(name string) (*Layer, error) {
+	stack, err := s.GetStack(name)
+	if err != nil {
+		return nil, err
+	}
+	layer := NewLayer(stack)
+	if layer != nil {
+		return layer, nil
+	}
+	return nil, fmt.Errorf("Can't create layer %s with level %d", name, stack.Layer)
+}
+
+func (s *InMemoryStorage) remove(name string, force bool) error {
+	Logger.Info("Removing %s with force = %t", name, force)
+
+	children := make([]string, 0)
+	for _, stack := range s.stacks {
+		if stack.From == name {
+			if force {
+				err := s.remove(stack.Name, force)
+				if err != nil {
+					return err
+				}
+			} else {
+				children = append(children, stack.Name)
+			}
+		}
+	}
+
+	Logger.Debug("%s children: %s", name, children)
+	if len(children) > 0 {
+		return fmt.Errorf("There are stacks depending on %s. Either remove them first or force deletion. Dependant stacks:\n%s",
+			name, strings.Join(children, "\n"))
+	}
+
+	delete(s.stacks, name)
+	return nil
 }

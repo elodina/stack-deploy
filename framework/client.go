@@ -30,9 +30,6 @@ func NewClient(host string) *Client {
 	}
 	user := os.Getenv("SD_USER")
 	key := os.Getenv("SD_KEY")
-	if user == "" || key == "" {
-		fmt.Println("Warning: Environment SD_USER or SD_KEY is empty")
-	}
 	return &Client{host: host, user: user, key: key}
 }
 
