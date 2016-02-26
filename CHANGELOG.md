@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.1.0
+
+New Features:
+
+- Developer mode
+
 #### Version 0.3.0.0
 
 New Features:
