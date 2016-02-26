@@ -11,8 +11,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-var DeveloperModeEnabled = false
-
 type StackDeployServer struct {
 	api             string
 	marathonClient  marathon.Marathon

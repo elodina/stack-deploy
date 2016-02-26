@@ -59,6 +59,7 @@ func (sc *ServerCommand) Run(args []string) int {
 		connectRetries = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
 		connectBackoff = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
 		debug          = flags.Bool("debug", false, "Flag for debug mode")
+		dev            = flags.Bool("dev", false, "Flag for developer mode")
 		variables      = make(vars)
 	)
 	flags.StringVar(&schedulerConfig.Master, "master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
@@ -67,7 +68,6 @@ func (sc *ServerCommand) Run(args []string) int {
 	flags.StringVar(&schedulerConfig.FrameworkRole, "framework.role", "*", "Mesos framework role. Defaults to *.")
 	flags.DurationVar(&schedulerConfig.FailoverTimeout, "failover.timeout", 168*time.Hour, "Mesos framework failover timeout. Defaults to 1 week.")
 	flags.Var(variables, "var", "Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.")
-	flags.BoolVar(&framework.DeveloperModeEnabled, "dev", false, "Flag for developer mode")
 
 	flags.Parse(args)
 	if *debug {
@@ -115,7 +115,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	var userStorage framework.UserStorage
 	var stateStorage framework.StateStorage
 	var key string
-	if !framework.DeveloperModeEnabled {
+	if !*dev {
 		var connection *gocql.Session
 		var err error
 		storage, connection, err = framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff)
