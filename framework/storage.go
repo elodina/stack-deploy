@@ -34,13 +34,13 @@ type CassandraStorage struct {
 	lock       sync.Mutex
 }
 
-func NewCassandraStorageRetryBackoff(cluster []string, keyspace string, retries int, backoff time.Duration) (Storage, *gocql.Session, error) {
+func NewCassandraStorageRetryBackoff(cluster []string, keyspace string, retries int, backoff time.Duration, proto int) (Storage, *gocql.Session, error) {
 	var err error
 	var storage Storage
 	var connection *gocql.Session
 	for i := 0; i < retries; i++ {
 		Logger.Info("Trying to connect to cassandra cluster at %s: %d try", strings.Join(cluster, ","), i+1)
-		storage, connection, err = NewCassandraStorage(cluster, keyspace)
+		storage, connection, err = NewCassandraStorage(cluster, keyspace, proto)
 		if err == nil {
 			err = storage.Init()
 			if err == nil {
@@ -53,8 +53,9 @@ func NewCassandraStorageRetryBackoff(cluster []string, keyspace string, retries 
 	return nil, nil, err
 }
 
-func NewCassandraStorage(addresses []string, keyspace string) (Storage, *gocql.Session, error) {
+func NewCassandraStorage(addresses []string, keyspace string, proto int) (Storage, *gocql.Session, error) {
 	cluster := gocql.NewCluster(addresses...)
+	cluster.ProtoVersion = proto
 	cluster.Timeout = 5 * time.Second
 	session, err := cluster.CreateSession()
 	if err != nil {
@@ -256,7 +257,7 @@ func (cs *CassandraStorage) Init() error {
 		return err
 	}
 
-	query = fmt.Sprintf("CREATE INDEX IF NOT EXISTS ON %s.stacks (parent)", cs.keyspace)
+	query = fmt.Sprintf("CREATE CUSTOM INDEX IF NOT EXISTS stacks_parent_idx ON %s.stacks (parent)", cs.keyspace)
 	return cs.connection.Query(query).Exec()
 }
 

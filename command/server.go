@@ -56,6 +56,7 @@ func (sc *ServerCommand) Run(args []string) int {
 		bootstrap      = flags.String("bootstrap", "", "Stack file to bootstrap with.")
 		cassandra      = flags.String("cassandra", "127.0.0.1", "Cassandra cluster IPs, comma-separated")
 		keyspace       = flags.String("keyspace", "stack_deploy", "Cassandra keyspace")
+		proto          = flags.Int("proto", 3, "Cassandra protocol version")
 		connectRetries = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
 		connectBackoff = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
 		debug          = flags.Bool("debug", false, "Flag for debug mode")
@@ -118,7 +119,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	if !*dev {
 		var connection *gocql.Session
 		var err error
-		storage, connection, err = framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff)
+		storage, connection, err = framework.NewCassandraStorageRetryBackoff(strings.Split(*cassandra, ","), *keyspace, *connectRetries, *connectBackoff, *proto)
 		if err != nil {
 			panic(err)
 		}
