@@ -257,7 +257,7 @@ func (cs *CassandraStorage) Init() error {
 		return err
 	}
 
-	query = fmt.Sprintf("CREATE CUSTOM INDEX IF NOT EXISTS stacks_parent_idx ON %s.stacks (parent)", cs.keyspace)
+	query = fmt.Sprintf("CREATE INDEX IF NOT EXISTS stacks_parent_idx ON %s.stacks (parent)", cs.keyspace)
 	return cs.connection.Query(query).Exec()
 }
 
