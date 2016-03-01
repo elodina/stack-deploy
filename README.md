@@ -274,7 +274,7 @@ Run-once tasks are a special type (for now) of tasks which are run without using
 
 Run-once tasks are run exactly once and are not restarted after termination unlike Marathon tasks. This is useful for installing some additional software on slaves, running builds etc.
 
-The number of run-once tasks is controlled using `instances` field in each application, which can be any number between 1 and number of slaves, or `all` meaning "number of slaves" instances.
+The number of run-once tasks is controlled using `instances` field in each application, which can be any number between 1 and number of slaves, or `all` meaning "number of slaves" instances. Run-once tasks are also compatible with [Marathon constraints](https://github.com/mesosphere/marathon/blob/master/docs/docs/constraints.md). You may control where tasks will run. The "all" number will be also adjusted to the number of matching slaves, so if you have for example 9 slaves, 6 with attribute type=kafka and 3 with type=zk, and your run-once task is constrained like `["type", "LIKE", "kafka"]`, then `all` instances will equal to 6.
 
 An example of a stack with run once task could be the following:
 
