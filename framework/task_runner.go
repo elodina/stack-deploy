@@ -30,7 +30,7 @@ type TaskRunner interface {
 }
 
 type MesosTaskRunner interface {
-	StageApplication(application *Application) <-chan *ApplicationRunStatus
+	StageApplication(application *Application, mesos MesosState) <-chan *ApplicationRunStatus
 	ResourceOffer(driver scheduler.SchedulerDriver, offer *mesos.Offer) (string, error)
 	StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) bool
 }

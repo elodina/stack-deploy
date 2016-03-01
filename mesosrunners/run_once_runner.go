@@ -35,15 +35,21 @@ func NewRunOnceRunner() *RunOnceRunner {
 	}
 }
 
-func (r *RunOnceRunner) StageApplication(application *framework.Application) <-chan *framework.ApplicationRunStatus {
+func (r *RunOnceRunner) StageApplication(application *framework.Application, state framework.MesosState) <-chan *framework.ApplicationRunStatus {
 	r.applicationLock.Lock()
 	defer r.applicationLock.Unlock()
 
+	instances := application.GetInstances(state)
+	if instances == 0 {
+		statusChan := make(chan *framework.ApplicationRunStatus, 1)
+		statusChan <- framework.NewApplicationRunStatus(application, nil)
+
+		return statusChan
+	}
+
 	ctx := NewRunOnceApplicationContext()
 	ctx.Application = application
-	ctx.StatusChan = make(chan *framework.ApplicationRunStatus)
-	ctx.InstancesLeftToRun = application.GetInstances()
-
+	ctx.InstancesLeftToRun = instances
 	r.applications[application.ID] = ctx
 
 	return ctx.StatusChan

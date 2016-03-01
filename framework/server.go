@@ -161,7 +161,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	} else {
 		//refresh Mesos state first, consider refreshing periodically when supporting auto-scaling
-		err := Mesos.Update()
+		err := ts.scheduler.GetMesosState().Update()
 		if err != nil {
 			Logger.Error("Refresh Mesos state error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)

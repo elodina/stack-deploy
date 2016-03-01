@@ -46,16 +46,19 @@ func NewSchedulerConfig() *SchedulerConfig {
 type Scheduler interface {
 	Start() error
 	RunApplication(application *Application) <-chan *ApplicationRunStatus
+	GetMesosState() MesosState
 }
 
 type StackDeployScheduler struct {
 	*SchedulerConfig
 	driver scheduler.SchedulerDriver
+	state  MesosState
 }
 
 func NewScheduler(config *SchedulerConfig) *StackDeployScheduler {
 	return &StackDeployScheduler{
 		SchedulerConfig: config,
+		state:           NewMesosClusterState(config.Master),
 	}
 }
 
@@ -171,17 +174,11 @@ func (s *StackDeployScheduler) RunApplication(application *Application) <-chan *
 		return statusChan
 	}
 
-	// if number of slaves is less than number of applications to run return an error immediately
-	// TODO this should be removed once we support constraints, now it's like hardcoded hostname=unique
-	slaves := Mesos.GetSlaves()
-	if len(slaves) < application.GetInstances() {
-		go func() {
-			statusChan <- NewApplicationRunStatus(application, errors.New("Number of instances exceeds available slaves number"))
-		}()
-		return statusChan
-	}
+	return runner.StageApplication(application, s.GetMesosState())
+}
 
-	return runner.StageApplication(application)
+func (s *StackDeployScheduler) GetMesosState() MesosState {
+	return s.state
 }
 
 func (s *StackDeployScheduler) acceptOffer(driver scheduler.SchedulerDriver, offer *mesos.Offer) string {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elodina/stack-deploy/constraints"
 	marathon "github.com/gambol99/go-marathon"
 	yaml "gopkg.in/yaml.v2"
 	"io"
@@ -98,6 +99,11 @@ func (a *Application) Validate() error {
 		}
 	}
 
+	_, err := constraints.ParseConstraints(a.Constraints)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -132,7 +138,7 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 			return err
 		}
 	} else {
-		err := a.runMarathon(context, client, stateStorage, maxWait)
+		err := a.runMarathon(context, client, scheduler, stateStorage, maxWait)
 		if err != nil {
 			return err
 		}
@@ -195,8 +201,8 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 	return a.executeCommands(a.AfterTasks, fmt.Sprintf("%s_after_tasks.sh", a.ID))
 }
 
-func (a *Application) runMarathon(context *StackContext, client marathon.Marathon, stateStorage StateStorage, maxWait int) error {
-	application := a.createApplication(context)
+func (a *Application) runMarathon(context *StackContext, client marathon.Marathon, scheduler Scheduler, stateStorage StateStorage, maxWait int) error {
+	application := a.createApplication(context, scheduler.GetMesosState())
 	_, err := client.CreateApplication(application)
 	if err != nil {
 		return err
@@ -323,11 +329,11 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 	return nil
 }
 
-func (a *Application) createApplication(context *StackContext) *marathon.Application {
+func (a *Application) createApplication(context *StackContext, mesos MesosState) *marathon.Application {
 	application := &marathon.Application{
 		ID:           a.ID,
 		Cmd:          a.getLaunchCommand(context),
-		Instances:    a.GetInstances(),
+		Instances:    a.GetInstances(mesos),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
 		Ports:        a.Ports,
@@ -370,13 +376,13 @@ func (a *Application) getLaunchCommand(context *StackContext) string {
 	return cmd
 }
 
-func (a *Application) GetInstances() int {
+func (a *Application) GetInstances(mesos MesosState) int {
 	if a.Instances == "" {
 		return 1
 	}
 
 	if a.Instances == "all" {
-		return int(Mesos.GetActivatedSlaves())
+		return a.calculateAllInstances(mesos)
 	}
 
 	instances, err := strconv.Atoi(a.Instances)
@@ -386,6 +392,63 @@ func (a *Application) GetInstances() int {
 	}
 
 	return instances
+}
+
+func (a *Application) calculateAllInstances(mesos MesosState) int {
+	constraints := a.GetConstraints()
+	if len(constraints) == 0 {
+		Logger.Debug("No constraints, all instances == %d", mesos.GetActivatedSlaves())
+		return mesos.GetActivatedSlaves()
+	}
+
+	matchingSlaves := make([]Slave, 0)
+	for _, slave := range mesos.GetSlaves() {
+		if a.slaveMatches(constraints, slave, matchingSlaves) {
+			matchingSlaves = append(matchingSlaves, slave)
+		}
+	}
+
+	return len(matchingSlaves)
+}
+
+func (a *Application) slaveMatches(constraints map[string][]constraints.Constraint, slave Slave, otherSlaves []Slave) bool {
+	for attribute, attributeConstraints := range constraints {
+		slaveAttribute := slave.Attribute(attribute)
+		if slaveAttribute == "" {
+			Logger.Debug("Slave %s does not have attribute %s, thus does not match constraints", slave.ID, attribute)
+			return false
+		}
+
+		for _, constraint := range attributeConstraints {
+			if !constraint.Matches(slaveAttribute, a.otherSlavesAttributes(otherSlaves, attribute)) {
+				Logger.Debug("Slave %s does not match constraint %s", slave.ID, constraint)
+				return false
+			}
+		}
+	}
+
+	Logger.Debug("Slave %s matches constraints", slave.ID)
+	return true
+}
+
+func (a *Application) otherSlavesAttributes(slaves []Slave, name string) []string {
+	attributes := make([]string, 0)
+	for _, slave := range slaves {
+		attribute := slave.Attribute(name)
+		if attribute != "" {
+			attributes = append(attributes, attribute)
+		}
+	}
+
+	return attributes
+}
+
+func (a *Application) GetConstraints() map[string][]constraints.Constraint {
+	constraints, err := constraints.ParseConstraints(a.Constraints)
+	if err != nil {
+		panic(err) //constraints should be validated before this call
+	}
+	return constraints
 }
 
 func (a *Application) getHealthchecks() []*marathon.HealthCheck {
