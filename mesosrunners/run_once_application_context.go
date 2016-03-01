@@ -19,6 +19,7 @@ import (
 	"fmt"
 	utils "github.com/elodina/go-mesos-utils"
 	"github.com/elodina/go-mesos-utils/pretty"
+	"github.com/elodina/stack-deploy/constraints"
 	"github.com/elodina/stack-deploy/framework"
 	"github.com/golang/protobuf/proto"
 	mesos "github.com/mesos/mesos-go/mesosproto"
@@ -33,13 +34,16 @@ type RunOnceApplicationContext struct {
 
 	InstancesLeftToRun int
 
-	lock            sync.RWMutex
-	stagedInstances map[string]mesos.TaskState
+	lock  sync.RWMutex
+	tasks []*runOnceTask
 }
 
 func NewRunOnceApplicationContext() *RunOnceApplicationContext {
+	tasks := make([]*runOnceTask, 0)
+
 	return &RunOnceApplicationContext{
-		stagedInstances: make(map[string]mesos.TaskState),
+		StatusChan: make(chan *framework.ApplicationRunStatus),
+		tasks:      tasks,
 	}
 }
 
@@ -51,8 +55,9 @@ func (ctx *RunOnceApplicationContext) Matches(offer *mesos.Offer) string {
 		return "all instances are staged/running"
 	}
 
-	if _, exists := ctx.stagedInstances[offer.GetHostname()]; exists {
-		return fmt.Sprintf("application instance is already staged/running on host %s", offer.GetHostname())
+	declineReason := ctx.CheckConstraints(offer)
+	if declineReason != "" {
+		return declineReason
 	}
 
 	if ctx.Application.Cpu > utils.GetScalarResources(offer, utils.ResourceCpus) {
@@ -71,8 +76,8 @@ func (ctx *RunOnceApplicationContext) LaunchTask(driver scheduler.SchedulerDrive
 	defer ctx.lock.Unlock()
 
 	ctx.InstancesLeftToRun--
-	ctx.stagedInstances[offer.GetHostname()] = mesos.TaskState_TASK_STAGING
 	taskInfo := ctx.newTaskInfo(offer)
+	ctx.tasks = append(ctx.tasks, newRunOnceTask(offer, taskInfo.GetTaskId().GetValue()))
 
 	_, err := driver.LaunchTasks([]*mesos.OfferID{offer.GetId()}, []*mesos.TaskInfo{taskInfo}, &mesos.Filters{RefuseSeconds: proto.Float64(10)})
 	return err
@@ -83,8 +88,7 @@ func (ctx *RunOnceApplicationContext) StatusUpdate(driver scheduler.SchedulerDri
 	defer ctx.lock.Unlock()
 
 	hostname := hostnameFromTaskID(status.GetTaskId().GetValue())
-
-	ctx.stagedInstances[hostname] = status.GetState()
+	ctx.updateTaskState(status)
 
 	switch status.GetState() {
 	case mesos.TaskState_TASK_RUNNING:
@@ -150,12 +154,72 @@ func (ctx *RunOnceApplicationContext) allTasksFinished() bool {
 		return false
 	}
 
-	for hostname, state := range ctx.stagedInstances {
-		if state != mesos.TaskState_TASK_FINISHED && state != mesos.TaskState_TASK_KILLED {
-			framework.Logger.Debug("Task on hostname %s for application %s is not yet finished/killed", hostname, ctx.Application.ID)
+	for _, task := range ctx.tasks {
+		if task.State != mesos.TaskState_TASK_FINISHED && task.State != mesos.TaskState_TASK_KILLED {
+			framework.Logger.Debug("Task with id %s for application %s is not yet finished/killed", task.TaskID, ctx.Application.ID)
 			return false
 		}
 	}
 
 	return true
+}
+
+func (ctx *RunOnceApplicationContext) updateTaskState(status *mesos.TaskStatus) {
+	for _, task := range ctx.tasks {
+		if task.TaskID == status.GetTaskId().GetValue() {
+			task.State = status.GetState()
+			return
+		}
+	}
+
+	framework.Logger.Warn("Got unexpected status update for unknown task with ID %s", status.GetTaskId().GetValue())
+}
+
+func (ctx *RunOnceApplicationContext) CheckConstraints(offer *mesos.Offer) string {
+	offerAttributes := constraints.OfferAttributes(offer)
+
+	for name, constraints := range ctx.Application.GetConstraints() {
+		for _, constraint := range constraints {
+			attribute, exists := offerAttributes[name]
+			if exists {
+				if !constraint.Matches(attribute, ctx.otherTasksAttributes(name)) {
+					framework.Logger.Debug("Attribute %s doesn't match %s", name, constraint)
+					return fmt.Sprintf("%s doesn't match %s", name, constraint)
+				}
+			} else {
+				framework.Logger.Debug("Offer does not contain %s attribute", name)
+				return fmt.Sprintf("no %s", name)
+			}
+		}
+	}
+
+	return ""
+}
+
+func (ctx *RunOnceApplicationContext) otherTasksAttributes(name string) []string {
+	attributes := make([]string, 0)
+	for _, task := range ctx.tasks {
+		if task.State != mesos.TaskState_TASK_STARTING {
+			value := task.Attributes[name]
+			if value != "" {
+				attributes = append(attributes, value)
+			}
+		}
+	}
+
+	return attributes
+}
+
+type runOnceTask struct {
+	State      mesos.TaskState
+	Attributes map[string]string
+	TaskID     string
+}
+
+func newRunOnceTask(offer *mesos.Offer, taskID string) *runOnceTask {
+	return &runOnceTask{
+		State:      mesos.TaskState_TASK_STAGING,
+		Attributes: constraints.OfferAttributes(offer),
+		TaskID:     taskID,
+	}
 }

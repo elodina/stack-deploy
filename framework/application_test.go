@@ -303,21 +303,21 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Application should set the right number of instances", t, func() {
-		Mesos = &MesosState{
+		mesos := &MesosClusterState{
 			ActivatedSlaves: 12,
 		}
 		app := new(Application)
 		// 1 is default
-		So(app.GetInstances(), ShouldEqual, 1)
+		So(app.GetInstances(mesos), ShouldEqual, 1)
 
 		app.Instances = "34"
-		So(app.GetInstances(), ShouldEqual, 34)
+		So(app.GetInstances(mesos), ShouldEqual, 34)
 
 		app.Instances = "all"
-		So(app.GetInstances(), ShouldEqual, 12)
+		So(app.GetInstances(mesos), ShouldEqual, 12)
 
 		app.Instances = "foo"
-		So(func() { app.GetInstances() }, ShouldPanic)
+		So(func() { app.GetInstances(mesos) }, ShouldPanic)
 	})
 
 	Convey("Application should form a correct launch string", t, func() {

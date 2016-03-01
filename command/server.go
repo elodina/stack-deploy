@@ -82,13 +82,6 @@ func (sc *ServerCommand) Run(args []string) int {
 	framework.TaskRunners = sc.runners
 	framework.MesosTaskRunners = sc.mesosRunners
 
-	framework.Mesos = framework.NewMesosState(schedulerConfig.Master)
-	err := framework.Mesos.Update()
-	if err != nil {
-		Logger.Critical("%s", err)
-		return 1
-	}
-
 	marathonClient, err := sc.connectMarathon(*marathonURL, *connectRetries, *connectBackoff)
 	if err != nil {
 		Logger.Critical("%s", err)
@@ -96,6 +89,11 @@ func (sc *ServerCommand) Run(args []string) int {
 	}
 
 	scheduler := framework.NewScheduler(schedulerConfig)
+	err = scheduler.GetMesosState().Update()
+	if err != nil {
+		Logger.Critical("%s", err)
+		return 1
+	}
 
 	if *bootstrap != "" {
 		context, err := sc.Bootstrap(*bootstrap, marathonClient, scheduler, *connectRetries, *connectBackoff)

@@ -26,6 +26,7 @@ func TestNewApiServer(t *testing.T) {
 		userStorage := &MockUserStorage{}
 		stateStorage := &MockStateStorage{}
 		scheduler := &MockScheduler{}
+		scheduler.state = &FakeMesos{}
 
 		Convey("When creating new API Server", func() {
 			server := NewApiServer(api, marathonClient, nil, storage, userStorage, stateStorage, scheduler)
@@ -220,7 +221,6 @@ func TestHandlers(t *testing.T) {
 
 			Convey("/run", func() {
 				Convey("Without zone", func() {
-					Mesos = &FakeMesos{}
 					stack := map[string]string{"name": "stack1", "zone": ""}
 					encoded, _ := json.Marshal(stack)
 					reader := bytes.NewReader(encoded)
@@ -247,7 +247,6 @@ func TestHandlers(t *testing.T) {
 					})
 				})
 				Convey("With zone", func() {
-					Mesos = &FakeMesos{}
 					stack := map[string]string{"name": "stack1", "zone": "default"}
 					encoded, _ := json.Marshal(stack)
 					reader := bytes.NewReader(encoded)

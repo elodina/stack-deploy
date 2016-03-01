@@ -92,12 +92,13 @@ func (m *MockTaskRunner) RunTask(context *StackContext, application *Application
 
 type FakeMesos struct{}
 
-func (FakeMesos) Update() error               { return nil }
-func (FakeMesos) GetActivatedSlaves() float64 { return 0 }
-func (FakeMesos) GetSlaves() []Slave          { return nil }
+func (FakeMesos) Update() error           { return nil }
+func (FakeMesos) GetActivatedSlaves() int { return 0 }
+func (FakeMesos) GetSlaves() []Slave      { return nil }
 
 type MockScheduler struct {
 	startErr error
+	state    MesosState
 }
 
 func (ms *MockScheduler) Start() error {
@@ -106,4 +107,8 @@ func (ms *MockScheduler) Start() error {
 
 func (ms *MockScheduler) RunApplication(app *Application) <-chan *ApplicationRunStatus {
 	return nil
+}
+
+func (ms *MockScheduler) GetMesosState() MesosState {
+	return ms.state
 }

@@ -23,16 +23,14 @@ import (
 	"sync"
 )
 
-var Mesos MesosStater
-
-type MesosStater interface {
+type MesosState interface {
 	Update() error
-	GetActivatedSlaves() float64
+	GetActivatedSlaves() int
 	GetSlaves() []Slave
 }
 
 //TODO extend this struct when necessary
-type MesosState struct {
+type MesosClusterState struct {
 	ActivatedSlaves float64 `json:"activated_slaves"`
 	Slaves          []Slave `json:"slaves"`
 
@@ -40,7 +38,7 @@ type MesosState struct {
 	lock   sync.Mutex
 }
 
-func NewMesosState(master string) *MesosState {
+func NewMesosClusterState(master string) *MesosClusterState {
 	if !strings.HasPrefix(master, "http://") {
 		master = "http://" + master
 	}
@@ -49,20 +47,20 @@ func NewMesosState(master string) *MesosState {
 		master = master[:len(master)-1]
 	}
 
-	return &MesosState{
+	return &MesosClusterState{
 		master: master,
 	}
 }
 
-func (ms *MesosState) GetActivatedSlaves() float64 {
-	return ms.ActivatedSlaves
+func (ms *MesosClusterState) GetActivatedSlaves() int {
+	return int(ms.ActivatedSlaves)
 }
 
-func (ms *MesosState) GetSlaves() []Slave {
+func (ms *MesosClusterState) GetSlaves() []Slave {
 	return ms.Slaves
 }
 
-func (ms *MesosState) Update() error {
+func (ms *MesosClusterState) Update() error {
 	ms.lock.Lock()
 	defer ms.lock.Unlock()
 
@@ -92,7 +90,7 @@ func (ms *MesosState) Update() error {
 	return nil
 }
 
-func (ms *MesosState) String() string {
+func (ms *MesosClusterState) String() string {
 	js, err := json.MarshalIndent(ms, "", "  ")
 	if err != nil {
 		panic(err)
@@ -108,4 +106,12 @@ type Slave struct {
 	ID         string                 `json:"id"`
 	PID        string                 `json:"pid"`
 	Resources  map[string]interface{} `json:"resources"`
+}
+
+func (s *Slave) Attribute(name string) string {
+	if name == "hostname" {
+		return s.Hostname
+	}
+
+	return s.Attributes[name]
 }

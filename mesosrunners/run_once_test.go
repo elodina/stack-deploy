@@ -64,7 +64,7 @@ func TestRunOnceRunner(t *testing.T) {
 				LaunchCommand: "sleep 10",
 			}
 
-			statusChan := runner.StageApplication(application)
+			statusChan := runner.StageApplication(application, nil)
 
 			So(statusChan, ShouldNotBeNil)
 			So(runner.applications["foo"], ShouldNotBeNil)
@@ -81,7 +81,7 @@ func TestRunOnceRunner(t *testing.T) {
 				Mem:           512,
 				Instances:     "3",
 				LaunchCommand: "sleep 10",
-			})
+			}, nil)
 
 			declineReason, err := runner.ResourceOffer(new(mesostest.MockSchedulerDriver), &mesos.Offer{
 				Hostname: proto.String("slave0"),
@@ -100,7 +100,7 @@ func TestRunOnceRunner(t *testing.T) {
 				Mem:           512,
 				Instances:     "3",
 				LaunchCommand: "sleep 10",
-			})
+			}, nil)
 
 			driver := new(mesostest.MockSchedulerDriver)
 			offer := &mesos.Offer{
@@ -141,7 +141,7 @@ func TestRunOnceRunner(t *testing.T) {
 				Mem:           512,
 				Instances:     "3",
 				LaunchCommand: "sleep 10",
-			})
+			}, nil)
 			runner.applications["foo"].InstancesLeftToRun = 0
 			runner.applications["foo"].StatusChan = statusChan
 
@@ -172,14 +172,29 @@ func TestRunOnceApplicationContext(t *testing.T) {
 				So(ctx.Matches(nil), ShouldEqual, "all instances are staged/running")
 			})
 
-			Convey("if application is already staged on given host", func() {
+			Convey("if application constraints do not match", func() {
 				ctx := NewRunOnceApplicationContext()
+				ctx.Application = &framework.Application{
+					Type:          "foo",
+					ID:            "foo",
+					Cpu:           0.5,
+					Mem:           512,
+					Instances:     "3",
+					LaunchCommand: "sleep 10",
+					Constraints:   [][]string{[]string{"hostname", "UNIQUE"}},
+				}
 				ctx.InstancesLeftToRun = 1
-				ctx.stagedInstances["slave0"] = mesos.TaskState_TASK_STAGING
+				ctx.tasks = append(ctx.tasks, &runOnceTask{
+					State: mesos.TaskState_TASK_STAGING,
+					Attributes: map[string]string{
+						"hostname": "slave0",
+					},
+					TaskID: "",
+				})
 
 				So(ctx.Matches(&mesos.Offer{
 					Hostname: proto.String("slave0"),
-				}), ShouldContainSubstring, "application instance is already staged/running on host")
+				}), ShouldContainSubstring, "hostname doesn't match unique")
 			})
 
 			Convey("if it does not have enough CPU", func() {
@@ -289,7 +304,14 @@ func TestRunOnceApplicationContext(t *testing.T) {
 
 			Convey("if there are instances not yet finished", func() {
 				ctx.InstancesLeftToRun = 0
-				ctx.stagedInstances["slave0"] = mesos.TaskState_TASK_RUNNING
+
+				ctx.tasks = append(ctx.tasks, &runOnceTask{
+					State: mesos.TaskState_TASK_STAGING,
+					Attributes: map[string]string{
+						"hostname": "slave0",
+					},
+					TaskID: "",
+				})
 				So(ctx.allTasksFinished(), ShouldBeFalse)
 			})
 		})
@@ -310,7 +332,13 @@ func TestRunOnceApplicationContext(t *testing.T) {
 			})
 
 			Convey("if all tasks are in state finished and no instances left to run", func() {
-				ctx.stagedInstances["slave0"] = mesos.TaskState_TASK_FINISHED
+				ctx.tasks = append(ctx.tasks, &runOnceTask{
+					State: mesos.TaskState_TASK_FINISHED,
+					Attributes: map[string]string{
+						"hostname": "slave0",
+					},
+					TaskID: "",
+				})
 				So(ctx.allTasksFinished(), ShouldBeTrue)
 				So(ctx.InstancesLeftToRun, ShouldEqual, 0)
 			})
@@ -341,8 +369,8 @@ func TestRunOnceApplicationContext(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(driver.LaunchTasksCount, ShouldEqual, 1)
 			So(ctx.InstancesLeftToRun, ShouldEqual, 2)
-			So(ctx.stagedInstances, ShouldHaveLength, 1)
-			So(ctx.stagedInstances["slave0"], ShouldEqual, mesos.TaskState_TASK_STAGING)
+			So(ctx.tasks, ShouldHaveLength, 1)
+			So(ctx.tasks[0].State, ShouldEqual, mesos.TaskState_TASK_STAGING)
 		})
 
 		Convey("should handle status updates", func() {
@@ -357,6 +385,10 @@ func TestRunOnceApplicationContext(t *testing.T) {
 				LaunchCommand: "sleep 10",
 			}
 			ctx.StatusChan = make(chan *framework.ApplicationRunStatus, 1)
+			ctx.tasks = append(ctx.tasks, &runOnceTask{
+				State:  mesos.TaskState_TASK_STAGING,
+				TaskID: "foo|slave0|asd-asd-asd-asd-asd",
+			})
 
 			driver := new(mesostest.MockSchedulerDriver)
 
@@ -376,8 +408,8 @@ func TestRunOnceApplicationContext(t *testing.T) {
 				default:
 				}
 
-				So(ctx.stagedInstances, ShouldHaveLength, 1)
-				So(ctx.stagedInstances["slave0"], ShouldEqual, mesos.TaskState_TASK_RUNNING)
+				So(ctx.tasks, ShouldHaveLength, 1)
+				So(ctx.tasks[0].State, ShouldEqual, mesos.TaskState_TASK_RUNNING)
 			})
 
 			Convey("lost, failed and error statuses should result in error application status and signal application is done deploying", func() {
@@ -460,5 +492,5 @@ func testErrorStatus(t *testing.T, ctx *RunOnceApplicationContext, driver *mesos
 		t.Fail()
 	}
 
-	So(ctx.stagedInstances["slave0"], ShouldEqual, status.GetState())
+	So(ctx.tasks[0].State, ShouldEqual, status.GetState())
 }

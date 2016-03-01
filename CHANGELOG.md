@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.2.0
+
+Improvements:
+
+- Run-once tasks now respect constraints
+
 #### Version 0.3.1.1
 
 Fixes:
