@@ -16,10 +16,6 @@ limitations under the License. */
 package constraints
 
 import (
-	//"fmt"
-	//"github.com/golang/protobuf/proto"
-	//mesos "github.com/mesos/mesos-go/mesosproto"
-	//"strings"
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
@@ -199,57 +195,3 @@ func TestMatches(t *testing.T) {
 		})
 	})
 }
-
-//func TestMatchesAttributes(t *testing.T) {
-//	task1 := &TestConstrained{
-//		constraints: map[string][]Constraint{
-//			"rack": []Constraint{MustParseConstraint("like:^1-.*")},
-//		},
-//		attributes: map[string]string{
-//			"rack": "1-1",
-//		},
-//	}
-//
-//	offer := &mesos.Offer{
-//		Attributes: []*mesos.Attribute{
-//			&mesos.Attribute{
-//				Name: proto.String("rack"),
-//				Text: &mesos.Value_Text{
-//					Value: proto.String("1-1"),
-//				},
-//			},
-//		},
-//	}
-//
-//	assert(t, CheckConstraints(offer, task1.Constraints(), []Constrained{task1}), "")
-//
-//	offer.Attributes[0].Text.Value = proto.String("2-1")
-//	assert(t, CheckConstraints(offer, task1.Constraints(), []Constrained{task1}), "rack doesn't match like:^1-.*")
-//
-//	task2 := &TestConstrained{
-//		constraints: map[string][]Constraint{
-//			"floor": []Constraint{MustParseConstraint("unique")},
-//		},
-//		attributes: map[string]string{
-//			"rack":  "1-1",
-//			"floor": "1",
-//		},
-//	}
-//
-//	offer.Attributes[0].Name = proto.String("floor")
-//	offer.Attributes[0].Text.Value = proto.String("1")
-//	assert(t, CheckConstraints(offer, task2.Constraints(), []Constrained{task2}), "floor doesn't match unique")
-//}
-//
-//type TestConstrained struct {
-//	constraints map[string][]Constraint
-//	attributes  map[string]string
-//}
-//
-//func (tc *TestConstrained) Constraints() map[string][]Constraint {
-//	return tc.constraints
-//}
-//
-//func (tc *TestConstrained) Attribute(name string) string {
-//	return tc.attributes[name]
-//}
