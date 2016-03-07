@@ -18,13 +18,13 @@ package framework
 import "github.com/gambol99/go-marathon"
 
 type Docker struct {
-	ForcePullImage bool           `yaml:"force_pull_image,omitempty"`
-	Image          string         `yaml:"image,omitempty"`
-	Network        string         `yaml:"network,omitempty"`
-	Parameters     map[string]string  `yaml:"parameters,omitempty"`
+	ForcePullImage bool                 `yaml:"force_pull_image,omitempty"`
+	Image          string               `yaml:"image,omitempty"`
+	Network        string               `yaml:"network,omitempty"`
+	Parameters     map[string]string    `yaml:"parameters,omitempty"`
 	PortMappings   []*DockerPortMapping `yaml:"port_mappings,omitempty"`
-	Privileged     bool           `yaml:"privileged,omitempty"`
-	Volumes        []*DockerVolume `yaml:"volumes,omitempty"`
+	Privileged     bool                 `yaml:"privileged,omitempty"`
+	Volumes        []*DockerVolume      `yaml:"volumes,omitempty"`
 }
 
 func (d *Docker) MarathonContainer() *marathon.Container {
@@ -32,11 +32,11 @@ func (d *Docker) MarathonContainer() *marathon.Container {
 		Type: "DOCKER",
 		Docker: &marathon.Docker{
 			ForcePullImage: d.ForcePullImage,
-			Image: d.Image,
-			Network: d.Network,
-			Parameters: d.marathonParameters(),
-			PortMappings: d.marathonPortMappings(),
-			Privileged: d.Privileged,
+			Image:          d.Image,
+			Network:        d.Network,
+			Parameters:     d.marathonParameters(),
+			PortMappings:   d.marathonPortMappings(),
+			Privileged:     d.Privileged,
 		},
 		Volumes: d.marathonVolumes(),
 	}
@@ -50,7 +50,7 @@ func (d *Docker) marathonParameters() []*marathon.Parameters {
 	parameters := make([]*marathon.Parameters, 0, len(d.Parameters))
 	for k, v := range d.Parameters {
 		parameters = append(parameters, &marathon.Parameters{
-			Key: k,
+			Key:   k,
 			Value: v,
 		})
 	}
@@ -94,9 +94,9 @@ type DockerPortMapping struct {
 func (dpm *DockerPortMapping) Marathon() *marathon.PortMapping {
 	return &marathon.PortMapping{
 		ContainerPort: dpm.ContainerPort,
-		HostPort: dpm.HostPort,
-		ServicePort: dpm.ServicePort,
-		Protocol: dpm.Protocol,
+		HostPort:      dpm.HostPort,
+		ServicePort:   dpm.ServicePort,
+		Protocol:      dpm.Protocol,
 	}
 }
 
@@ -109,7 +109,7 @@ type DockerVolume struct {
 func (dv *DockerVolume) Marathon() *marathon.Volume {
 	return &marathon.Volume{
 		ContainerPath: dv.ContainerPath,
-		HostPath: dv.HostPath,
-		Mode: dv.Mode,
+		HostPath:      dv.HostPath,
+		Mode:          dv.Mode,
 	}
 }

@@ -15,6 +15,7 @@ stack-deploy
 * [Showing stacks](#showing-stacks)
 * [Running stacks](#running-stacks)
 * [Run-once tasks](#run-once-tasks)
+* [Running Docker containers](#running-docker-containers)
 * [Minimal stack examples](#minimal-stack-examples)
 * [Task Runners](https://github.com/elodina/stack-deploy/blob/master/docs/task_runners.md)
 * [Developer Mode](#developer-mode)
@@ -266,6 +267,34 @@ Available flags:
 `--zone` - [empty string] - zone to run stack in.    
 `--max.wait` - [`600`] - maximum time in seconds to wait for each application in a stack to become running and healthy.    
 `--api` - [`http://127.0.0.1:4200`] - stack-deploy server address.    
+
+Running Docker containers
+----------------------------
+
+Stack-deploy uses Marathon to run Docker containers. A simple example of a task that runs a Docker container is as follows:
+
+```
+name: docker
+applications:
+  docker:
+    type: "docker"
+    id: docker-task
+    cpu: 0.1
+    mem: 128
+    launch_command: "sleep 60 && echo done!"
+    docker:
+      image: busybox
+```
+
+**Docker fields description**:
+
+`force_pull_image` - [`bool`] - force pull Docker image. Defaults to `false`.
+`image` - [`string`] - Docker image to run.    
+`network` - [`string`] - Network mode to use.    
+`parameters` - [`map[string]string`] - Additional key-value parameters.    
+`port_mappings` - Port mappings for bridged networking.    
+`privileged` - [`bool`] - Flag to run the Docker container in privileged mode. Defaults to `false`.    
+`volumes` - Additional volumes.    
 
 Run-once tasks
 -----------------

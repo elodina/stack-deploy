@@ -53,7 +53,7 @@ type Application struct {
 	Scheduler           map[string]string `yaml:"scheduler,omitempty"`
 	Tasks               yaml.MapSlice     `yaml:"tasks,omitempty"`
 	Dependencies        []string          `yaml:"dependencies,omitempty"`
-	Docker				*Docker			  `yaml:"docker,omitempty"`
+	Docker              *Docker           `yaml:"docker,omitempty"`
 
 	BeforeScheduler []string `yaml:"before_scheduler,omitempty"`
 	AfterScheduler  []string `yaml:"after_scheduler,omitempty"`
@@ -344,7 +344,7 @@ func (a *Application) createApplication(context *StackContext, mesos MesosState)
 		HealthChecks: a.getHealthchecks(),
 		Constraints:  a.Constraints,
 		Labels:       a.getLabelsFromContext(context),
-		Container: a.getContainer(),
+		Container:    a.getContainer(),
 	}
 	return application
 }

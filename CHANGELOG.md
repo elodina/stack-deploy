@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.3.0
+
+New Features:
+
+- Docker support for Marathon tasks
+
 #### Version 0.3.2.0
 
 Improvements:
