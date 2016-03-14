@@ -41,7 +41,7 @@ func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables 
 }
 
 func (ts *StackDeployServer) Start() {
-	http.HandleFunc("/list", ts.Auth(ts.Cors(ts.ListHandler)))
+	http.HandleFunc("/list", ts.Cors(ts.Auth(ts.ListHandler)))
 	http.HandleFunc("/stacks", ts.Cors(ts.Auth(ts.StacksHandler)))
 	http.HandleFunc("/get", ts.Auth(ts.GetStackHandler))
 	http.HandleFunc("/run", ts.Auth(ts.RunHandler))
