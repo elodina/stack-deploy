@@ -38,20 +38,23 @@ func NewContext() *StackContext {
 
 func (c *StackContext) SetStackVariable(key string, value string) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.stackVariables[key] = value
-	c.lock.Unlock()
 }
 
 func (c *StackContext) SetArbitraryVariable(key string, value string) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.arbitraryVariables[key] = value
-	c.lock.Unlock()
 }
 
 func (c *StackContext) SetGlobalVariable(key string, value string) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.globalVariables[key] = value
-	c.lock.Unlock()
 }
 
 func (c *StackContext) Get(key string) (string, error) {
