@@ -169,18 +169,11 @@ func (cs *CassandraStorage) StoreStack(stack *Stack) error {
 	cs.lock.Lock()
 	defer cs.lock.Unlock()
 
-	exists, err := cs.exists(stack.Name)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		Logger.Info("Stack %s already exists", stack.Name)
-		return fmt.Errorf("Stack %s already exists", stack.Name)
-	}
-
 	if stack.From != "" {
-		exists, err = cs.exists(stack.From)
+		exists, err := cs.exists(stack.From)
+		if err != nil {
+			return err
+		}
 		if !exists {
 			Logger.Info("Parent stack %s does not exist", stack.From)
 			return fmt.Errorf("Parent stack %s does not exist", stack.From)
@@ -306,11 +299,6 @@ func (s *InMemoryStorage) GetStackRunner(name string) (Runner, error) {
 }
 
 func (s *InMemoryStorage) StoreStack(stack *Stack) error {
-	_, exists := s.stacks[stack.Name]
-	if exists {
-		return errors.New("Stack already exists")
-	}
-
 	s.stacks[stack.Name] = stack
 	return nil
 }

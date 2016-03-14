@@ -19,10 +19,11 @@ type StackDeployServer struct {
 	stateStorage    StateStorage
 	userStorage     UserStorage
 	scheduler       Scheduler
+	cors            bool
 }
 
 func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables map[string]string, storage Storage, userStorage UserStorage, stateStorage StateStorage,
-	scheduler Scheduler) *StackDeployServer {
+	scheduler Scheduler, dev bool) *StackDeployServer {
 	if strings.HasPrefix(api, "http://") {
 		api = api[len("http://"):]
 	}
@@ -34,16 +35,18 @@ func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables 
 		stateStorage:    stateStorage,
 		userStorage:     userStorage,
 		scheduler:       scheduler,
+		cors:            dev,
 	}
 	return server
 }
 
 func (ts *StackDeployServer) Start() {
-	http.HandleFunc("/list", ts.Auth(ts.ListHandler))
+	http.HandleFunc("/list", ts.Auth(ts.Cors(ts.ListHandler)))
+	http.HandleFunc("/stacks", ts.Cors(ts.Auth(ts.StacksHandler)))
 	http.HandleFunc("/get", ts.Auth(ts.GetStackHandler))
 	http.HandleFunc("/run", ts.Auth(ts.RunHandler))
-	http.HandleFunc("/createstack", ts.Auth(ts.CreateStackHandler))
-	http.HandleFunc("/removestack", ts.Auth(ts.RemoveStackHandler))
+	http.HandleFunc("/createstack", ts.Cors(ts.Auth(ts.CreateStackHandler)))
+	http.HandleFunc("/removestack", ts.Cors(ts.Auth(ts.RemoveStackHandler)))
 	http.HandleFunc("/health", ts.HealthHandler)
 	http.HandleFunc("/createuser", ts.Auth(ts.Admin(ts.CreateUserHandler)))
 	http.HandleFunc("/refreshtoken", ts.Auth(ts.Admin(ts.RefreshTokenHandler)))
@@ -59,6 +62,23 @@ func (ts *StackDeployServer) Start() {
 	err = http.ListenAndServe(ts.api, nil)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func (ts *StackDeployServer) Cors(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("Request method: %s\n", r.Method)
+		fmt.Printf("Options: %v\n", r.Method == http.MethodOptions)
+		fmt.Printf("Cors: %v\n", ts.cors)
+		if ts.cors && r.Method == http.MethodOptions {
+			w.Header().Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Add("Access-Control-Allow-Headers", "X-Api-Key, X-Api-User")
+			w.Header().Add("Access-Control-Allow-Origin", "*")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		handler(w, r)
 	}
 }
 
@@ -98,6 +118,45 @@ func (ts *StackDeployServer) Admin(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+type StackResponse struct {
+	Name      string `json:"name"`
+	Stackfile string `json:"stackfile"`
+}
+
+func (ts *StackDeployServer) StacksHandler(w http.ResponseWriter, r *http.Request) {
+	stacks, err := ts.storage.GetAll()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := make([]StackResponse, len(stacks))
+
+	for i, stack := range stacks {
+		stackfile, err := yaml.Marshal(stack)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		response[i] = StackResponse{
+			Name:      stack.Name,
+			Stackfile: string(stackfile),
+		}
+	}
+
+	jsonStacks, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(jsonStacks)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 func (ts *StackDeployServer) ListHandler(w http.ResponseWriter, r *http.Request) {
 	Logger.Debug("Received list command")
 	defer r.Body.Close()
@@ -105,6 +164,7 @@ func (ts *StackDeployServer) ListHandler(w http.ResponseWriter, r *http.Request)
 	stacks, err := ts.storage.GetAll()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	stackNames := make([]string, len(stacks))
@@ -116,6 +176,7 @@ func (ts *StackDeployServer) ListHandler(w http.ResponseWriter, r *http.Request)
 	yamlStacks, err := yaml.Marshal(stackNames)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
