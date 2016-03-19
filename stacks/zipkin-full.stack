@@ -1,0 +1,135 @@
+name: zipkin-full
+applications:
+  exhibitor-mesos:
+    type: "exhibitor-mesos-0.1.x"
+    id: exhibitor-mesos
+    version: 0.1
+    cpu: 0.1
+    mem: 512
+    ports:
+      - 31991
+    launch_command: "$(find jdk* -maxdepth 0 -type d)/bin/java -jar mesos-exhibitor-0.1.jar scheduler"
+    artifact_urls:
+      - "http://repo.elodina.s3.amazonaws.com/mesos-exhibitor-0.1.jar"
+      - "http://repo.elodina.s3.amazonaws.com/exhibitor-1.5.5-all.jar"
+      - "http://repo.elodina.s3.amazonaws.com/jdk-7u79-linux-x64.tar.gz"
+      - "http://repo.elodina.s3.amazonaws.com/zookeeper.tar.gz"
+    healthcheck: /health
+    scheduler:
+      api: http://$HOST:$PORT0
+      master: ${mesos.master}
+      debug: true
+      storage: "zk:${zk_url}/exhibitor-mesos"
+    tasks:
+      exhibitors:
+        id: 70
+        cpu: 0.1
+        mem: 1024
+        port: 31150
+        constraints: "hostname=unique"
+        configtype: zookeeper
+        zkconfigconnect: "${zk_url}"
+        zkconfigzpath: /exhibitor/config
+        zookeeper-install-directory: "/tmp/zookeeper"
+        zookeeper-data-directory: "/tmp/zkdata"
+  kafka-mesos:
+    type: "kafka-mesos-0.9.x"
+    id: kafka-mesos
+    version: 0.9.2
+    cpu: 0.1
+    mem: 512
+    ports:
+      - 31990
+    launch_command: "/usr/bin/java -jar kafka-mesos-0.9.2.0.jar scheduler"
+    artifact_urls:
+      - "https://github.com/mesos/kafka/releases/download/v0.9.2.0/kafka-mesos-0.9.2.0.jar"
+      - "http://repo.elodina.s3.amazonaws.com/kafka_2.10-0.8.2.2.tgz"
+    healthcheck: /health
+    scheduler:
+      api: http://$HOST:$PORT0
+      master: ${mesos.master}
+      zk: "${exhibitor-mesos.zkConnect}"
+      storage: "zk:/kafka-mesos"
+      log: "./std-log.log"
+      debug: true
+    tasks:
+      brokers:
+        id: 70
+        cpus: 0.5
+        mem: 1024
+        constraints: "hostname=unique"
+        port: 31250
+        timeout: 10m
+    dependencies:
+      - exhibitor-mesos
+  dse-mesos:
+      type: "dse-mesos-0.2.x"
+      id: dse-mesos-0.2.x
+      version: 0.1
+      cpu: 0.1
+      mem: 512
+      launch_command: "chmod +x dse-mesos.sh && ./dse-mesos.sh scheduler"
+      artifact_urls:
+        - "http://dse-elodina.s3.amazonaws.com/dse-mesos-0.2.jar"
+        - "http://dse-elodina.s3.amazonaws.com/dse-mesos.sh"
+        - "http://dse-elodina.s3.amazonaws.com/dse.tar.gz"
+        - "http://dse-elodina.s3.amazonaws.com/jre-7u79-linux-x64.tar.gz"
+      healthcheck: /health
+      scheduler:
+        api: http://$HOST:$PORT0
+        master: ${mesos.master}
+        debug: true
+        framework-name: "dse-mesos-0.2.x"
+      tasks:
+        seed:
+          node: 70
+          cpu: 0.5
+          mem: 10000
+          timeout: 30min
+          api: "${dse-mesos-0.2.x.api}"
+          constraints: "hostname=unique"
+          cluster: "dse-mesos"
+          cqlPort: 31100
+  zipkin-mesos:
+      type: "zipkin-mesos-0.1.x"
+      id: zipkin-mesos
+      version: 0.1
+      cpu: 0.1
+      mem: 256
+      launch_command: "/usr/bin/java -jar zipkin-mesos-0.1.jar scheduler"
+      healthcheck: /health
+      artifact_urls:
+        - "http://repo.elodina.s3.amazonaws.com/zipkin-deps.tar.gz"
+        - "http://repo.elodina.s3.amazonaws.com/zipkin-collector-service-1.14.1-all.jar"
+        - "http://repo.elodina.s3.amazonaws.com/zipkin-query-service-1.14.1-all.jar"
+        - "http://repo.elodina.s3.amazonaws.com/zipkin-web-1.14.1-all.jar"
+        - "http://repo.elodina.s3.amazonaws.com/zipkin-mesos-0.1.jar"
+      scheduler:
+        api: http://$HOST:$PORT0
+        master: ${mesos.master}
+        debug: true
+      tasks:
+        collector:
+          type: collector
+          id: 0
+          cpu: 0.5
+          mem: 1536
+          env: "KAFKA_ZOOKEEPER=${exhibitor-mesos.zkConnect},KAFKA_TOPIC=zipkin,CASSANDRA_CONTACT_POINTS=${dse-mesos-0.2.x.cassandraConnect}"
+          timeout: 60s
+        query:
+          type: query
+          id: 0
+          cpu: 0.5
+          mem: 1536
+          env: "CASSANDRA_CONTACT_POINTS=${dse-mesos-0.2.x.cassandraConnect}"
+        web:
+          type: web
+          id: 0
+          cpu: 0.2
+          mem: 512
+          port: 31983
+          flags: "zipkin.web.query.dest=${zipkin-mesos.query-0.endpoint}"
+      dependencies:
+        - kafka-mesos
+        - dse-mesos-0.2.x
+        
