@@ -1,0 +1,41 @@
+name: zipkin-standalone
+applications:
+  zipkin-mesos:
+    type: "zipkin-mesos-0.1.x"
+    id: zipkin-mesos
+    version: 0.1
+    cpu: 0.1
+    mem: 256
+    launch_command: "/usr/bin/java -jar zipkin-mesos-0.1.jar scheduler"
+    healthcheck: /health
+    artifact_urls:
+      - "http://repo.elodina.s3.amazonaws.com/zipkin-deps.tar.gz"
+      - "http://repo.elodina.s3.amazonaws.com/zipkin-collector-service-1.14.1-all.jar"
+      - "http://repo.elodina.s3.amazonaws.com/zipkin-query-service-1.14.1-all.jar"
+      - "http://repo.elodina.s3.amazonaws.com/zipkin-web-1.14.1-all.jar"
+      - "http://repo.elodina.s3.amazonaws.com/zipkin-mesos-0.1.jar"
+    scheduler:
+      api: http://$HOST:$PORT0
+      master: ${mesos.master}
+      debug: true
+    tasks:
+      collector:
+        type: collector
+        id: 0
+        cpu: 0.5
+        mem: 1536
+        env: "KAFKA_ZOOKEEPER=${kafka_zk_url},KAFKA_TOPIC=zipkin,CASSANDRA_CONTACT_POINTS=${cassandra_url}"
+        timeout: 60s
+      query:
+        type: query
+        id: 0
+        cpu: 0.5
+        mem: 1536
+        env: "CASSANDRA_CONTACT_POINTS=${cassandra_url}"
+      web:
+        type: web
+        id: 0
+        cpu: 0.2
+        mem: 512
+        port: 31983
+        flags: "zipkin.web.query.dest=${zipkin-mesos.query-0.endpoint}"
