@@ -90,8 +90,12 @@ func (sc *ServerCommand) Run(args []string) int {
 	}
 
 	if *persistentStorage == "" {
-		Logger.Critical("--storage flag is required. Examples: 'file:stack-deploy.json', 'zk:zookeeper.service:2181/stack-deploy'")
-		return 1
+		if !*dev {
+			Logger.Critical("--storage flag is required. Examples: 'file:stack-deploy.json', 'zk:zookeeper.service:2181/stack-deploy'")
+			return 1
+		} else {
+			*persistentStorage = "file:stack-deploy.json"
+		}
 	}
 
 	frameworkStorage, err := framework.NewFrameworkStorage(*persistentStorage)
