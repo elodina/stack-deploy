@@ -468,9 +468,9 @@ func (a *Application) getHealthchecks() []*marathon.HealthCheck {
 				Protocol:               "HTTP",
 				Path:                   a.Healthcheck,
 				GracePeriodSeconds:     120,
-				IntervalSeconds:        60,
+				IntervalSeconds:        10,
 				PortIndex:              0,
-				MaxConsecutiveFailures: 3,
+				MaxConsecutiveFailures: 18,
 				TimeoutSeconds:         30,
 			},
 		}

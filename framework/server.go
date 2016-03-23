@@ -176,12 +176,13 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			context.SetArbitraryVariable(varName, varValue)
 		}
 
-		_, err = ts.runStack(runRequest, context, ts.storage)
+		context, err = ts.runStack(runRequest, context, ts.storage)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		Logger.Info("Done running stack %s: %s", stackName, context.String())
 	}
 	w.WriteHeader(http.StatusOK)
 }
