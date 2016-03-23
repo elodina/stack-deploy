@@ -1,5 +1,13 @@
 # Changelog
 
+#### Version 0.3.4.0
+
+**This version introduces new required --storage flag, see readme for explanation**
+
+Improvements:
+
+- Persist bootstrapped Cassandra contact points to persistent storage to handle stack-deploy failovers
+
 #### Version 0.3.3.1
 
 Improvements/Fixes:

@@ -22,6 +22,7 @@ import (
 	"github.com/elodina/go-mesos-utils/pretty"
 	"github.com/golang/protobuf/proto"
 	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ import (
 
 type SchedulerConfig struct {
 	Master          string
+	Storage         *FrameworkStorage
 	User            string
 	FrameworkName   string
 	FrameworkRole   string
@@ -73,6 +75,10 @@ func (s *StackDeployScheduler) Start() error {
 		Checkpoint:      proto.Bool(true),
 	}
 
+	if s.Storage.FrameworkID != "" {
+		frameworkInfo.Id = mesosutil.NewFrameworkID(s.Storage.FrameworkID)
+	}
+
 	driverConfig := scheduler.DriverConfig{
 		Scheduler: s,
 		Framework: frameworkInfo,
@@ -98,6 +104,8 @@ func (s *StackDeployScheduler) Start() error {
 func (s *StackDeployScheduler) Registered(driver scheduler.SchedulerDriver, id *mesos.FrameworkID, master *mesos.MasterInfo) {
 	Logger.Info("[Registered] framework: %s master: %s:%d", id.GetValue(), master.GetHostname(), master.GetPort())
 
+	s.Storage.FrameworkID = id.GetValue()
+	s.Storage.Save()
 	s.driver = driver
 }
 

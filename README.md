@@ -55,6 +55,7 @@ Available flags:
 
 `--master` - [`127.0.0.1:5050`] - Mesos Master address [host]:[port].    
 `--marathon` - [`http://127.0.0.1:8080`] - Marathon address [host]:[port].    
+`--storage` - Required flag to provide persistent storage to recover from failovers. *Required*. Examples: `file:stack-deploy.json`, `zk:zookeeper.service:2181/stack-deploy`    
 `--var` - Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.    
 `--api` - [`0.0.0.0:4200`] - stack-deploy server bind address.    
 `--bootstrap` - Stack file to bootstrap with.    
@@ -288,7 +289,7 @@ applications:
 
 **Docker fields description**:
 
-`force_pull_image` - [`bool`] - force pull Docker image. Defaults to `false`.
+`force_pull_image` - [`bool`] - force pull Docker image. Defaults to `false`.    
 `image` - [`string`] - Docker image to run.    
 `network` - [`string`] - Network mode to use.    
 `parameters` - [`map[string]string`] - Additional key-value parameters.    

@@ -50,18 +50,19 @@ func (sc *ServerCommand) Run(args []string) int {
 	schedulerConfig := framework.NewSchedulerConfig()
 
 	var (
-		flags          = flag.NewFlagSet("server", flag.ExitOnError)
-		marathonURL    = flags.String("marathon", "http://127.0.0.1:8080", "Marathon address <ip:port>.")
-		api            = flags.String("api", "0.0.0.0:4200", "Stack-deploy server binding address")
-		bootstrap      = flags.String("bootstrap", "", "Stack file to bootstrap with.")
-		cassandra      = flags.String("cassandra", "127.0.0.1", "Cassandra cluster IPs, comma-separated")
-		keyspace       = flags.String("keyspace", "stack_deploy", "Cassandra keyspace")
-		proto          = flags.Int("proto", 3, "Cassandra protocol version")
-		connectRetries = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
-		connectBackoff = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
-		debug          = flags.Bool("debug", false, "Flag for debug mode")
-		dev            = flags.Bool("dev", false, "Flag for developer mode")
-		variables      = make(vars)
+		flags             = flag.NewFlagSet("server", flag.ExitOnError)
+		marathonURL       = flags.String("marathon", "http://127.0.0.1:8080", "Marathon address <ip:port>.")
+		persistentStorage = flags.String("storage", "", "Storage to store stack-deploy runtime information to recover from failovers. Required.")
+		api               = flags.String("api", "0.0.0.0:4200", "Stack-deploy server binding address")
+		bootstrap         = flags.String("bootstrap", "", "Stack file to bootstrap with.")
+		cassandra         = flags.String("cassandra", "127.0.0.1", "Cassandra cluster IPs, comma-separated")
+		keyspace          = flags.String("keyspace", "stack_deploy", "Cassandra keyspace")
+		proto             = flags.Int("proto", 3, "Cassandra protocol version")
+		connectRetries    = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
+		connectBackoff    = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
+		debug             = flags.Bool("debug", false, "Flag for debug mode")
+		dev               = flags.Bool("dev", false, "Flag for developer mode")
+		variables         = make(vars)
 	)
 	flags.StringVar(&schedulerConfig.Master, "master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
 	flags.StringVar(&schedulerConfig.User, "framework.user", "", "Mesos user. Defaults to current system user.")
@@ -88,6 +89,19 @@ func (sc *ServerCommand) Run(args []string) int {
 		return 1
 	}
 
+	if *persistentStorage == "" {
+		Logger.Critical("--storage flag is required. Examples: 'file:stack-deploy.json', 'zk:zookeeper.service:2181/stack-deploy'")
+		return 1
+	}
+
+	frameworkStorage, err := framework.NewFrameworkStorage(*persistentStorage)
+	if err != nil {
+		Logger.Critical("%s", err)
+		return 1
+	}
+	schedulerConfig.Storage = frameworkStorage
+	frameworkStorage.Load()
+
 	scheduler := framework.NewScheduler(schedulerConfig)
 	err = scheduler.GetMesosState().Update()
 	if err != nil {
@@ -96,18 +110,28 @@ func (sc *ServerCommand) Run(args []string) int {
 	}
 
 	if *bootstrap != "" {
-		context, err := sc.Bootstrap(*bootstrap, marathonClient, scheduler, *connectRetries, *connectBackoff)
-		if err != nil {
-			Logger.Critical("%s", err)
-			return 1
+		var context *framework.StackContext
+		if frameworkStorage.BootstrapContext != nil && len(frameworkStorage.BootstrapContext.All()) > 0 {
+			Logger.Info("Restored bootstrap context from persistent storage")
+			context = frameworkStorage.BootstrapContext
+		} else {
+			Logger.Info("No existing bootstrap context found in persistent storage, bootstrapping")
+			var err error
+			context, err = sc.Bootstrap(*bootstrap, marathonClient, scheduler, *connectRetries, *connectBackoff)
+			if err != nil {
+				Logger.Critical("%s", err)
+				return 1
+			}
 		}
+
 		Logger.Info("Bootstrap context: %s", context)
 		Logger.Info("Cassandra connect before resolving: %s", *cassandra)
-
 		for k, v := range context.All() {
 			*cassandra = strings.Replace(*cassandra, fmt.Sprintf("{%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
 		Logger.Info("Cassandra connect after resolving: %s", *cassandra)
+		frameworkStorage.BootstrapContext = context
+		frameworkStorage.Save()
 	}
 
 	var storage framework.Storage
