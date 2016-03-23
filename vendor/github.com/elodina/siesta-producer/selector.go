@@ -63,16 +63,18 @@ func NewSelectorConfig(producerConfig *ProducerConfig) *SelectorConfig {
 }
 
 type Selector struct {
-	config    *SelectorConfig
-	requests  chan *NetworkRequest
-	responses chan *ConnectionRequest
+	config         *SelectorConfig
+	correlationIDs *siesta.CorrelationIDGenerator
+	requests       chan *NetworkRequest
+	responses      chan *ConnectionRequest
 }
 
 func NewSelector(config *SelectorConfig) *Selector {
 	selector := &Selector{
-		config:    config,
-		requests:  make(chan *NetworkRequest, config.MaxRequests),
-		responses: make(chan *ConnectionRequest, config.MaxRequests),
+		config:         config,
+		correlationIDs: new(siesta.CorrelationIDGenerator),
+		requests:       make(chan *NetworkRequest, config.MaxRequests),
+		responses:      make(chan *ConnectionRequest, config.MaxRequests),
 	}
 	selector.Start()
 	return selector
@@ -95,61 +97,53 @@ func (s *Selector) Close() {
 	close(s.responses)
 }
 
-func (s *Selector) Send(link siesta.BrokerLink, request siesta.Request) <-chan *rawResponseAndError {
+func (s *Selector) Send(connection *siesta.BrokerConnection, request siesta.Request) <-chan *rawResponseAndError {
 	responseChan := make(chan *rawResponseAndError, 1) //make this buffered so we don't block if noone reads the response
-	s.requests <- &NetworkRequest{link, request, responseChan}
+	s.requests <- &NetworkRequest{connection, request, responseChan}
 
 	return responseChan
 }
 
 func (s *Selector) requestDispatcher() {
 	for request := range s.requests {
-		link := request.link
-		id, conn, err := link.GetConnection()
+		connection := request.connection
+		id := s.correlationIDs.NextCorrelationID()
+		conn, err := connection.GetConnection()
 		if err != nil {
-			link.Failed()
-			if s.config.RequiredAcks > 0 {
-				request.responseChan <- &rawResponseAndError{nil, link, err}
-			}
+			request.responseChan <- &rawResponseAndError{nil, connection, err, nil}
 			continue
 		}
 
 		if err := s.send(id, conn, request.request); err != nil {
-			link.Failed()
-			if s.config.RequiredAcks > 0 {
-				request.responseChan <- &rawResponseAndError{nil, link, err}
-			} else {
-				link.ReturnConnection(conn)
-			}
+			request.responseChan <- &rawResponseAndError{nil, connection, err, nil}
+			connection.ReleaseConnection(conn)
 			continue
 		}
 
 		if s.config.RequiredAcks > 0 {
 			s.responses <- &ConnectionRequest{connection: conn, request: request}
 		} else {
-			link.Succeeded()
-			link.ReturnConnection(conn)
+			request.responseChan <- &rawResponseAndError{nil, connection, nil, nil}
+			connection.ReleaseConnection(conn)
 		}
 	}
 }
 
 func (s *Selector) responseDispatcher() {
 	for connectionResponse := range s.responses {
-		link := connectionResponse.request.link
+		connection := connectionResponse.request.connection
 		conn := connectionResponse.connection
 		responseChan := connectionResponse.request.responseChan
 
 		bytes, err := s.receive(conn)
 		if err != nil {
-			link.Failed()
-			responseChan <- &rawResponseAndError{nil, link, err}
-			link.ReturnConnection(conn)
+			responseChan <- &rawResponseAndError{nil, connection, nil, err}
+			connection.ReleaseConnection(conn)
 			continue
 		}
 
-		link.Succeeded()
-		link.ReturnConnection(conn)
-		responseChan <- &rawResponseAndError{bytes, link, err}
+		connection.ReleaseConnection(conn)
+		responseChan <- &rawResponseAndError{bytes, connection, nil, err}
 	}
 }
 
@@ -188,13 +182,14 @@ func (s *Selector) receive(conn *net.TCPConn) ([]byte, error) {
 
 //TODO better struct name
 type NetworkRequest struct {
-	link         siesta.BrokerLink
+	connection   *siesta.BrokerConnection
 	request      siesta.Request
 	responseChan chan *rawResponseAndError
 }
 
 type rawResponseAndError struct {
-	bytes []byte
-	link  siesta.BrokerLink
-	err   error
+	bytes      []byte
+	connection *siesta.BrokerConnection
+	sendErr    error
+	receiveErr error
 }
