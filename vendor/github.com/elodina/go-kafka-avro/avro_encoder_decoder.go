@@ -25,12 +25,28 @@ import (
 
 var magic_bytes = []byte{0}
 
+type KafkaAvroAuth struct {
+	User string
+	Key  string
+}
+
+func NewAuth(user string, key string) *KafkaAvroAuth {
+	return &KafkaAvroAuth{
+		User: user,
+		Key:  key,
+	}
+}
+
 type KafkaAvroEncoder struct {
 	primitiveSchemas map[string]avro.Schema
 	schemaRegistry   SchemaRegistryClient
 }
 
 func NewKafkaAvroEncoder(url string) *KafkaAvroEncoder {
+	return NewKafkaAvroEncoderAuth(url, nil)
+}
+
+func NewKafkaAvroEncoderAuth(url string, auth *KafkaAvroAuth) *KafkaAvroEncoder {
 	primitiveSchemas := make(map[string]avro.Schema)
 	primitiveSchemas["Null"] = createPrimitiveSchema("null")
 	primitiveSchemas["Boolean"] = createPrimitiveSchema("boolean")
@@ -42,7 +58,7 @@ func NewKafkaAvroEncoder(url string) *KafkaAvroEncoder {
 	primitiveSchemas["Bytes"] = createPrimitiveSchema("bytes")
 
 	return &KafkaAvroEncoder{
-		schemaRegistry:   NewCachedSchemaRegistryClient(url),
+		schemaRegistry:   NewCachedSchemaRegistryClientAuth(url, auth),
 		primitiveSchemas: primitiveSchemas,
 	}
 }
@@ -119,8 +135,12 @@ type KafkaAvroDecoder struct {
 }
 
 func NewKafkaAvroDecoder(url string) *KafkaAvroDecoder {
+	return NewKafkaAvroDecoderAuth(url, nil)
+}
+
+func NewKafkaAvroDecoderAuth(url string, auth *KafkaAvroAuth) *KafkaAvroDecoder {
 	return &KafkaAvroDecoder{
-		schemaRegistry: NewCachedSchemaRegistryClient(url),
+		schemaRegistry: NewCachedSchemaRegistryClientAuth(url, auth),
 	}
 }
 

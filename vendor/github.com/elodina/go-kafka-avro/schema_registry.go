@@ -103,15 +103,21 @@ type CachedSchemaRegistryClient struct {
 	schemaCache  map[string]map[avro.Schema]int32
 	idCache      map[int32]avro.Schema
 	versionCache map[string]map[avro.Schema]int32
+	auth         *KafkaAvroAuth
 	lock         sync.RWMutex
 }
 
 func NewCachedSchemaRegistryClient(registryURL string) *CachedSchemaRegistryClient {
+	return NewCachedSchemaRegistryClientAuth(registryURL, nil)
+}
+
+func NewCachedSchemaRegistryClientAuth(registryURL string, auth *KafkaAvroAuth) *CachedSchemaRegistryClient {
 	return &CachedSchemaRegistryClient{
 		registryURL:  registryURL,
 		schemaCache:  make(map[string]map[avro.Schema]int32),
 		idCache:      make(map[int32]avro.Schema),
 		versionCache: make(map[string]map[avro.Schema]int32),
+		auth:         auth,
 	}
 }
 
@@ -121,12 +127,14 @@ func (this *CachedSchemaRegistryClient) Register(subject string, schema avro.Sch
 
 	this.lock.RLock()
 	if schemaIdMap, exists = this.schemaCache[subject]; exists {
+		this.lock.RUnlock()
 		var id int32
 		if id, exists = schemaIdMap[schema]; exists {
 			return id, nil
 		}
+	} else {
+		this.lock.RUnlock()
 	}
-	this.lock.RUnlock()
 
 	this.lock.Lock()
 	defer this.lock.Unlock()
@@ -161,9 +169,12 @@ func (this *CachedSchemaRegistryClient) Register(subject string, schema avro.Sch
 func (this *CachedSchemaRegistryClient) GetByID(id int32) (avro.Schema, error) {
 	var schema avro.Schema
 	var exists bool
+	this.lock.RLock()
 	if schema, exists = this.idCache[id]; exists {
+		this.lock.RUnlock()
 		return schema, nil
 	}
+	this.lock.RUnlock()
 
 	request, err := this.newDefaultRequest("GET", fmt.Sprintf(GET_SCHEMA_BY_ID, id), nil)
 	if err != nil {
@@ -180,7 +191,9 @@ func (this *CachedSchemaRegistryClient) GetByID(id int32) (avro.Schema, error) {
 			return nil, err
 		}
 		schema, err := avro.ParseSchema(decodedResponse.Schema)
+		this.lock.Lock()
 		this.idCache[id] = schema
+		this.lock.Unlock()
 
 		return schema, err
 	} else {
@@ -252,6 +265,10 @@ func (this *CachedSchemaRegistryClient) newDefaultRequest(method string, uri str
 	}
 	request.Header.Set("Accept", SCHEMA_REGISTRY_V1_JSON)
 	request.Header.Set("Content-Type", SCHEMA_REGISTRY_V1_JSON)
+	if this.auth != nil {
+		request.Header.Set("X-Api-User", this.auth.User)
+		request.Header.Set("X-Api-Key", this.auth.Key)
+	}
 	return request, nil
 }
 

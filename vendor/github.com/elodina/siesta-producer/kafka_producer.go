@@ -3,10 +3,8 @@ package producer
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/elodina/siesta"
-	"github.com/yanzay/cfg"
 )
 
 type ProducerRecord struct {
@@ -26,46 +24,6 @@ type RecordMetadata struct {
 	Topic     string
 	Partition int32
 	Error     error
-}
-
-type PartitionInfo struct{}
-type Metric struct{}
-type ProducerConfig struct {
-	Partitioner       Partitioner
-	MetadataExpire    time.Duration
-	CompressionType   string
-	BatchSize         int
-	Linger            time.Duration
-	Retries           int
-	RetryBackoff      time.Duration
-	BlockOnBufferFull bool
-
-	ClientID        string
-	MaxRequests     int
-	SendRoutines    int
-	ReceiveRoutines int
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	RequiredAcks    int
-	AckTimeoutMs    int32
-	BrokerList      []string
-}
-
-func NewProducerConfig() *ProducerConfig {
-	return &ProducerConfig{
-		Partitioner:     NewHashPartitioner(),
-		MetadataExpire:  time.Minute,
-		BatchSize:       1000,
-		ClientID:        "siesta",
-		MaxRequests:     10,
-		SendRoutines:    10,
-		ReceiveRoutines: 10,
-		ReadTimeout:     5 * time.Second,
-		WriteTimeout:    5 * time.Second,
-		RequiredAcks:    1,
-		AckTimeoutMs:    1000,
-		Linger:          1 * time.Second,
-	}
 }
 
 type Serializer func(interface{}) ([]byte, error)
@@ -94,114 +52,38 @@ type Producer interface {
 	// Send the given record asynchronously and return a channel which will eventually contain the response information.
 	Send(*ProducerRecord) <-chan *RecordMetadata
 
-	// Flush any accumulated records from the producer. Blocks until all sends are complete.
-	Flush()
-
-	// Get a list of partitions for the given topic for custom partition assignment. The partition metadata will change
-	// over time so this list should not be cached.
-	PartitionsFor(topic string) []PartitionInfo
-
-	// Return a map of metrics maintained by the producer
-	Metrics() map[string]Metric
-
-	// Tries to close the producer cleanly within the specified timeout. If the close does not complete within the
-	// timeout, fail any pending send requests and force close the producer.
-	Close(timeout time.Duration)
+	// Tries to close the producer cleanly.
+	Close()
 }
 
 type KafkaProducer struct {
 	config          *ProducerConfig
-	time            time.Time
 	keySerializer   Serializer
 	valueSerializer Serializer
-	metrics         map[string]Metric
-	accumulator     *RecordAccumulator
-	metricTags      map[string]string
+	messagesChan    chan *ProducerRecord
 	connector       siesta.Connector
 	metadata        *Metadata
-	RecordsMetadata chan *RecordMetadata
+	selector        *Selector
 }
 
 func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector siesta.Connector) *KafkaProducer {
 	log.Println("Starting the Kafka producer")
 	producer := &KafkaProducer{}
 	producer.config = config
-	producer.time = time.Now()
-	producer.metrics = make(map[string]Metric)
+	producer.messagesChan = make(chan *ProducerRecord, config.BatchSize)
 	producer.keySerializer = keySerializer
 	producer.valueSerializer = valueSerializer
 	producer.connector = connector
 	producer.metadata = NewMetadata(connector, config.MetadataExpire)
-	metricTags := make(map[string]string)
 
-	networkClientConfig := NetworkClientConfig{}
-	client := NewNetworkClient(networkClientConfig, connector, config)
+	selectorConfig := NewSelectorConfig(config)
+	producer.selector = NewSelector(selectorConfig)
 
-	accumulatorConfig := &RecordAccumulatorConfig{
-		batchSize:         config.BatchSize,
-		compressionType:   config.CompressionType,
-		linger:            config.Linger,
-		retryBackoff:      config.RetryBackoff,
-		blockOnBufferFull: config.BlockOnBufferFull,
-		metrics:           producer.metrics,
-		time:              producer.time,
-		metricTags:        metricTags,
-		networkClient:     client,
-	}
-	producer.accumulator = NewRecordAccumulator(accumulatorConfig, producer.RecordsMetadata)
+	go producer.messageDispatchLoop()
 
 	log.Println("Kafka producer started")
 
 	return producer
-}
-
-func ProducerConfigFromFile(filename string) (*ProducerConfig, error) {
-	c, err := cfg.LoadNewMap(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	producerConfig := NewProducerConfig()
-	if err := setDurationConfig(&producerConfig.MetadataExpire, c["metadata.max.age"]); err != nil {
-		return nil, err
-	}
-	if err := setIntConfig(&producerConfig.BatchSize, c["batch.size"]); err != nil {
-		return nil, err
-	}
-	if err := setIntConfig(&producerConfig.RequiredAcks, c["acks"]); err != nil {
-		return nil, err
-	}
-	if err := setInt32Config(&producerConfig.AckTimeoutMs, c["timeout.ms"]); err != nil {
-		return nil, err
-	}
-	if err := setDurationConfig(&producerConfig.Linger, c["linger"]); err != nil {
-		return nil, err
-	}
-	setStringConfig(&producerConfig.ClientID, c["client.id"])
-	if err := setIntConfig(&producerConfig.SendRoutines, c["send.routines"]); err != nil {
-		return nil, err
-	}
-	if err := setIntConfig(&producerConfig.ReceiveRoutines, c["receive.routines"]); err != nil {
-		return nil, err
-	}
-	setBoolConfig(&producerConfig.BlockOnBufferFull, c["block.on.buffer.full"])
-	if err := setIntConfig(&producerConfig.Retries, c["retries"]); err != nil {
-		return nil, err
-	}
-	if err := setDurationConfig(&producerConfig.RetryBackoff, c["retry.backoff"]); err != nil {
-		return nil, err
-	}
-	setStringConfig(&producerConfig.CompressionType, c["compression.type"])
-	if err := setIntConfig(&producerConfig.MaxRequests, c["max.requests"]); err != nil {
-		return nil, err
-	}
-
-	setStringsConfig(&producerConfig.BrokerList, c["bootstrap.servers"])
-	if len(producerConfig.BrokerList) == 0 {
-		setStringsConfig(&producerConfig.BrokerList, c["metadata.broker.list"])
-	}
-
-	return producerConfig, nil
 }
 
 func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
@@ -246,24 +128,58 @@ func (kp *KafkaProducer) send(record *ProducerRecord) {
 	}
 	record.Partition = partition
 
-	kp.accumulator.addChan <- record
+	kp.messagesChan <- record
 }
 
-func (kp *KafkaProducer) Flush() {}
+func (kp *KafkaProducer) messageDispatchLoop() {
+	accumulators := make(map[string]chan *ProducerRecord)
+	for message := range kp.messagesChan {
+		accumulator := accumulators[message.Topic]
+		if accumulator == nil {
+			accumulator = make(chan *ProducerRecord, kp.config.BatchSize)
+			accumulators[message.Topic] = accumulator
+			go kp.topicDispatchLoop(accumulator)
+		}
 
-func (kp *KafkaProducer) PartitionsFor(topic string) []PartitionInfo {
-	return []PartitionInfo{}
-}
-
-func (kp *KafkaProducer) Metrics() map[string]Metric {
-	return make(map[string]Metric)
-}
-
-// TODO return channel and remove timeout
-func (kp *KafkaProducer) Close(timeout time.Duration) {
-	closed := kp.accumulator.close()
-	select {
-	case <-closed:
-	case <-time.After(timeout):
+		accumulator <- message
 	}
+
+	for _, accumulator := range accumulators {
+		close(accumulator)
+	}
+}
+
+func (kp *KafkaProducer) topicDispatchLoop(topicMessagesChan chan *ProducerRecord) {
+	accumulators := make(map[int32]*RecordAccumulator)
+	for message := range topicMessagesChan {
+		accumulator := accumulators[message.Partition]
+		if accumulator == nil {
+			networkClientConfig := &NetworkClientConfig{
+				RequiredAcks: kp.config.RequiredAcks,
+				AckTimeoutMs: kp.config.AckTimeoutMs,
+				Retries:      kp.config.Retries,
+				RetryBackoff: kp.config.RetryBackoff,
+				Topic:        message.Topic,
+				Partition:    message.Partition,
+			}
+			networkClient := NewNetworkClient(networkClientConfig, kp.connector, kp.selector)
+
+			accumulatorConfig := &RecordAccumulatorConfig{
+				batchSize: kp.config.BatchSize,
+				linger:    kp.config.Linger,
+			}
+			accumulator = NewRecordAccumulator(accumulatorConfig, networkClient)
+			accumulators[message.Partition] = accumulator
+		}
+
+		accumulator.input <- message
+	}
+
+	for _, accumulator := range accumulators {
+		close(accumulator.closeChan)
+	}
+}
+
+func (kp *KafkaProducer) Close() {
+	close(kp.messagesChan)
 }
