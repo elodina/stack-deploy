@@ -117,3 +117,33 @@ func (c *StackContext) String() string {
 
 	return string(str)
 }
+
+func (c *StackContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]map[string]string{
+		"StackVariables":     c.stackVariables,
+		"ArbitraryVariables": c.arbitraryVariables,
+		"GlobalVariables":    c.globalVariables,
+	})
+}
+
+func (c *StackContext) UnmarshalJSON(data []byte) error {
+	ctx := make(map[string]map[string]string)
+	err := json.Unmarshal(data, &ctx)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range ctx["StackVariables"] {
+		c.SetStackVariable(k, v)
+	}
+
+	for k, v := range ctx["ArbitraryVariables"] {
+		c.SetArbitraryVariable(k, v)
+	}
+
+	for k, v := range ctx["GlobalVariables"] {
+		c.SetGlobalVariable(k, v)
+	}
+
+	return nil
+}
