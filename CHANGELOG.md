@@ -1,5 +1,12 @@
 # Changelog
 
+#### Version 0.3.3.1
+
+Improvements/Fixes:
+
+- Reduced Marathon healthchecks interval for faster deployment    
+- Output stack context after deployment is finished
+
 #### Version 0.3.3.0
 
 New Features:
