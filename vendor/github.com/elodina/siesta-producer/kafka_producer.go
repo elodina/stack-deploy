@@ -62,7 +62,6 @@ type KafkaProducer struct {
 	valueSerializer Serializer
 	messagesChan    chan *ProducerRecord
 	connector       siesta.Connector
-	metadata        *Metadata
 	selector        *Selector
 }
 
@@ -74,7 +73,6 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	producer.keySerializer = keySerializer
 	producer.valueSerializer = valueSerializer
 	producer.connector = connector
-	producer.metadata = NewMetadata(connector, config.MetadataExpire)
 
 	selectorConfig := NewSelectorConfig(config)
 	producer.selector = NewSelector(selectorConfig)
@@ -113,7 +111,7 @@ func (kp *KafkaProducer) send(record *ProducerRecord) {
 	record.encodedKey = serializedKey
 	record.encodedValue = serializedValue
 
-	partitions, err := kp.metadata.Get(record.Topic)
+	partitions, err := kp.connector.Metadata().PartitionsFor(record.Topic)
 	if err != nil {
 		metadata.Error = err
 		metadataChan <- metadata

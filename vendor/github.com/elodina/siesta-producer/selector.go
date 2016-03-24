@@ -153,15 +153,21 @@ func (s *Selector) send(correlationID int32, conn *net.TCPConn, request siesta.R
 	encoder := siesta.NewBinaryEncoder(bytes)
 	writer.Write(encoder)
 
-	conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
-	_, err := conn.Write(bytes)
+	err := conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(bytes)
 	return err
 }
 
 func (s *Selector) receive(conn *net.TCPConn) ([]byte, error) {
-	conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
+	err := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
+	if err != nil {
+		return nil, err
+	}
 	header := make([]byte, 8)
-	_, err := io.ReadFull(conn, header)
+	_, err = io.ReadFull(conn, header)
 	if err != nil {
 		return nil, err
 	}

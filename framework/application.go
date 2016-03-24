@@ -48,6 +48,8 @@ type Application struct {
 	User                string            `yaml:"user,omitempty"`
 	Healthcheck         string            `yaml:"healthcheck,omitempty"`
 	LaunchCommand       string            `yaml:"launch_command,omitempty"`
+	Args                []string          `yaml:"args,omitempty"`
+	Env                 map[string]string `yaml:"env,omitempty"`
 	ArtifactURLs        []string          `yaml:"artifact_urls,omitempty"`
 	AdditionalArtifacts []string          `yaml:"additional_artifacts,omitempty"`
 	Scheduler           map[string]string `yaml:"scheduler,omitempty"`
@@ -124,7 +126,7 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 	Logger.Debug("Running application: \n%s", a)
 	a.stateStorage = stateStorage
 	a.resolveVariables(context)
-	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler)
+	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler, a.Args, a.Env)
 	if err != nil {
 		return err
 	}
@@ -237,8 +239,14 @@ func (a *Application) storeTaskState(task map[string]string, context *StackConte
 func (a *Application) resolveVariables(context *StackContext) {
 	for k, v := range context.All() {
 		a.LaunchCommand = strings.Replace(a.LaunchCommand, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+		for envKey, envValue := range a.Env {
+			a.Env[envKey] = strings.Replace(envValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+		}
 		for schedulerKey, schedulerValue := range a.Scheduler {
 			a.Scheduler[schedulerKey] = strings.Replace(schedulerValue, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
+		}
+		for idx, arg := range a.Args {
+			a.Args[idx] = strings.Replace(arg, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
 		for _, taskSlice := range a.Tasks {
 			if taskSlice.Value != nil {
@@ -334,6 +342,8 @@ func (a *Application) createApplication(context *StackContext, mesos MesosState)
 	application := &marathon.Application{
 		ID:           a.ID,
 		Cmd:          a.getLaunchCommand(context),
+		Args:         a.Args,
+		Env:          a.Env,
 		Instances:    a.GetInstances(mesos),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
