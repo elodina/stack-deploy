@@ -91,10 +91,6 @@ func (a *Application) Validate() error {
 		return ErrApplicationInvalidMem
 	}
 
-	if a.LaunchCommand == "" {
-		return ErrApplicationNoLaunchCommand
-	}
-
 	if a.Instances != "" && a.Instances != "all" {
 		instances, err := strconv.Atoi(a.Instances)
 		if err != nil || instances < 1 {

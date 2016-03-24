@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.5.1
+
+Improvements:
+
+- Application launch command is no more required. This can be useful for Docker containers with default CMDs and ENTRYPOINTs.
+
 #### Version 0.3.5.0
 
 Improvements:

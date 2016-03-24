@@ -27,8 +27,6 @@ var ErrApplicationInvalidCPU = errors.New("Invalid application CPU")
 
 var ErrApplicationInvalidMem = errors.New("Invalid application Mem")
 
-var ErrApplicationNoLaunchCommand = errors.New("No launch command specified for application")
-
 var ErrApplicationInvalidInstances = errors.New("Invalid number of application instances: supported are numbers greater than zero and 'all'")
 
 var ErrApplicationDoesNotExist = errors.New("Application does not exist")
