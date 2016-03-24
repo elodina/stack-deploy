@@ -49,12 +49,12 @@
 		},
 		{
 			"ImportPath": "github.com/elodina/siesta",
-			"Comment": "v0.1.0.0-127-g4885031",
-			"Rev": "4885031d4f62560f173b00bf93b51b706d75dabe"
+			"Comment": "v0.1.0.0-129-g3b9fdb0",
+			"Rev": "3b9fdb08b2de541f86b769f70f172e171a182c3b"
 		},
 		{
 			"ImportPath": "github.com/elodina/siesta-producer",
-			"Rev": "6acf02606191d1d0e9b9c8f976e250e2ca5fab00"
+			"Rev": "a374fc36c515243efb438aed41c536af55d8b19b"
 		},
 		{
 			"ImportPath": "github.com/gambol99/go-marathon",

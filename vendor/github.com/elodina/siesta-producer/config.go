@@ -24,7 +24,6 @@ import (
 
 type ProducerConfig struct {
 	Partitioner     Partitioner
-	MetadataExpire  time.Duration
 	CompressionType string
 	BatchSize       int
 	Linger          time.Duration
@@ -45,7 +44,6 @@ type ProducerConfig struct {
 func NewProducerConfig() *ProducerConfig {
 	return &ProducerConfig{
 		Partitioner:     NewHashPartitioner(),
-		MetadataExpire:  time.Minute,
 		BatchSize:       16384,
 		ClientID:        "siesta",
 		MaxRequests:     10,
@@ -67,9 +65,6 @@ func ProducerConfigFromFile(filename string) (*ProducerConfig, error) {
 	}
 
 	producerConfig := NewProducerConfig()
-	if err := setDurationConfig(&producerConfig.MetadataExpire, c["metadata.max.age"]); err != nil {
-		return nil, err
-	}
 	if err := setIntConfig(&producerConfig.BatchSize, c["batch.size"]); err != nil {
 		return nil, err
 	}

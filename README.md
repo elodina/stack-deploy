@@ -138,6 +138,8 @@ Stack is a YAML file that contains information about Applications that should be
 `user` - [`string`] - Mesos user that will be used to run the application. Defaults to current system user if not set.    
 `healthcheck` - [`string`] - URL to perform healthchecks. Optional but highly recommended.    
 `launch_command` - [`string`] - launch command for application scheduler. The scheduler flags should not be set here.    
+`args` - [`array[string]`] - Arbitrary arguments to pass to the application.    
+`env` - [`map[string]string`] - Key-value pairs to pass as environment variables.    
 `artifact_urls` - [`array[string]`] - artifacts to be downloaded before running the application scheduler.    
 `additional_artifacts` - [`array[string]`] - additional artifacts to be downloaded before running the application scheduler. This can be used to avoid overriding the artifact list in child stacks. All additional artifacts will be appended to artifact urls list.    
 `scheduler` - [`map[string]string`] - scheduler configurations. Everything specified in these configurations will be appended to `launch_command` in form `--k v`.    

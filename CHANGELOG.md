@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.5.0
+
+Improvements:
+
+- Added `args` and `env` to application, allowing to pass arbitrary arguments (non key-value pairs) and environmental variables.
+
 #### Version 0.3.4.0
 
 **This version introduces new required --storage flag, see readme for explanation**

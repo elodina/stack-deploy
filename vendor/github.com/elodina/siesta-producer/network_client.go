@@ -63,7 +63,10 @@ func (nc *NetworkClient) trySend(request *siesta.ProduceRequest, batch []*Produc
 
 	response := <-nc.selector.Send(leader, request)
 	if response.sendErr != nil {
-		nc.connector.RefreshMetadata([]string{nc.Topic})
+		err = nc.connector.Metadata().Refresh([]string{nc.Topic})
+		if err != nil {
+			Logger.Warn("Send error occurred, returning it but also failed to refresh metadata: %s", err)
+		}
 		return response.sendErr
 	}
 
@@ -82,7 +85,10 @@ func (nc *NetworkClient) trySend(request *siesta.ProduceRequest, batch []*Produc
 	}
 
 	if response.receiveErr != nil {
-		nc.connector.RefreshMetadata([]string{nc.Topic})
+		err = nc.connector.Metadata().Refresh([]string{nc.Topic})
+		if err != nil {
+			Logger.Warn("Receive error occurred, returning it but also failed to refresh metadata: %s", err)
+		}
 		return response.receiveErr
 	}
 
@@ -96,7 +102,10 @@ func (nc *NetworkClient) trySend(request *siesta.ProduceRequest, batch []*Produc
 	status, exists := produceResponse.Status[nc.Topic][nc.Partition]
 	if exists {
 		if status.Error == siesta.ErrNotLeaderForPartition {
-			nc.connector.RefreshMetadata([]string{nc.Topic})
+			err = nc.connector.Metadata().Refresh([]string{nc.Topic})
+			if err != nil {
+				Logger.Warn("Produce error occurred, returning it but also failed to refresh metadata: %s", err)
+			}
 			return status.Error
 		}
 
