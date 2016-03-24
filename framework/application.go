@@ -337,9 +337,9 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 func (a *Application) createApplication(context *StackContext, mesos MesosState) *marathon.Application {
 	application := &marathon.Application{
 		ID:           a.ID,
-		Cmd:          a.getLaunchCommand(context),
+		Cmd:          a.getLaunchCommand(),
 		Args:         a.Args,
-		Env:          a.Env,
+		Env:          a.getEnv(context),
 		Instances:    a.GetInstances(mesos),
 		CPUs:         a.Cpu,
 		Mem:          a.Mem,
@@ -367,21 +367,29 @@ func (a *Application) getLabelsFromContext(context *StackContext) map[string]str
 	return labels
 }
 
-func (a *Application) getLaunchCommand(context *StackContext) string {
+func (a *Application) getLaunchCommand() string {
 	cmd := a.LaunchCommand
 	for k, v := range a.Scheduler {
 		cmd += fmt.Sprintf(" --%s %s", k, fmt.Sprint(v))
 	}
+	return cmd
+}
+
+func (a *Application) getEnv(context *StackContext) map[string]string {
+	env := make(map[string]string)
 	labelStrings := make([]string, 0)
 	for key, val := range a.getLabelsFromContext(context) {
 		labelStrings = append(labelStrings, fmt.Sprintf("%s=%s", key, val))
 	}
 	stackLabels := strings.Join(labelStrings, ";")
 	if stackLabels != "" {
-		env := fmt.Sprintf("export STACK_LABELS=\"%s\" && ", stackLabels)
-		cmd = env + cmd
+		env["STACK_LABELS"] = stackLabels
 	}
-	return cmd
+	for k, v := range a.Env {
+		env[k] = v
+	}
+
+	return env
 }
 
 func (a *Application) GetInstances(mesos MesosState) int {

@@ -1,5 +1,11 @@
 # Changelog
 
+#### Version 0.3.5.2
+
+Fixes:
+
+- Fixed a bug causing Docker containers to fail with empty launch command
+
 #### Version 0.3.5.1
 
 Improvements:
