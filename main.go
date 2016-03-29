@@ -9,6 +9,7 @@ import (
 	"github.com/elodina/stack-deploy/mesosrunners"
 	"github.com/elodina/stack-deploy/runners"
 	"github.com/mitchellh/cli"
+	"time"
 )
 
 func main() {
@@ -70,6 +71,7 @@ var taskRunners map[string]framework.TaskRunner = map[string]framework.TaskRunne
 	"syslog-mesos-0.1.x":          new(runners.SyslogTaskRunner),
 	"zipkin-mesos-0.1.x":          new(runners.ZipkinTaskRunner),
 	"go-kafka-client-mesos-0.3.x": new(runners.GoKafkaClientTaskRunner),
+	"elasticsearch":               runners.NewElasticsearchTaskRunner(5*time.Minute, 2*time.Second),
 }
 
 var mesosTaskRunners map[string]framework.MesosTaskRunner = map[string]framework.MesosTaskRunner{
