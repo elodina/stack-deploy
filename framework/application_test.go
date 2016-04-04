@@ -65,13 +65,6 @@ var validationCases map[*Application]error = map[*Application]error{
 	}: ErrApplicationInvalidMem,
 
 	&Application{
-		Type: "foo",
-		ID:   "nolaunchcmd",
-		Cpu:  0.5,
-		Mem:  512,
-	}: ErrApplicationNoLaunchCommand,
-
-	&Application{
 		Type:          "foo",
 		ID:            "invalidinstances",
 		Cpu:           0.5,
@@ -324,13 +317,13 @@ func TestApplication(t *testing.T) {
 		app := new(Application)
 		app.LaunchCommand = "./script.sh"
 
-		So(app.getLaunchCommand(&StackContext{}), ShouldEqual, "./script.sh")
+		So(app.getLaunchCommand(), ShouldEqual, "./script.sh")
 
 		app.Scheduler = map[string]string{
 			"foo": "bar",
 		}
 
-		So(app.getLaunchCommand(&StackContext{}), ShouldEqual, "./script.sh --foo bar")
+		So(app.getLaunchCommand(), ShouldEqual, "./script.sh --foo bar")
 	})
 
 	Convey("Custom shell commands should run correctly", t, func() {
