@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elodina/stack-deploy/constraints"
@@ -37,6 +38,7 @@ var applicationAwaitBackoff = time.Second
 var variableRegexp = regexp.MustCompile("\\$\\{.*\\}")
 
 type Application struct {
+	sync.RWMutex
 	Type                string            `yaml:"type,omitempty"`
 	ID                  string            `yaml:"id,omitempty"`
 	Version             string            `yaml:"version,omitempty"`
@@ -233,6 +235,8 @@ func (a *Application) storeTaskState(task map[string]string, context *StackConte
 }
 
 func (a *Application) resolveVariables(context *StackContext) {
+	a.Lock()
+	defer a.Unlock()
 	for k, v := range context.All() {
 		a.LaunchCommand = strings.Replace(a.LaunchCommand, fmt.Sprintf("${%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		for envKey, envValue := range a.Env {
@@ -503,7 +507,9 @@ func (a *Application) getHealthchecks() []marathon.HealthCheck {
 }
 
 func (a *Application) String() string {
+	a.RLock()
 	yml, err := yaml.Marshal(a)
+	a.RUnlock()
 	if err != nil {
 		panic(err)
 	}
