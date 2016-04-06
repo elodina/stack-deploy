@@ -1,0 +1,105 @@
+hash: 4ee43d7e3d0f525a3b5d2ad8bbe21c4b4d315a246a9a228e6641e6624925357e
+updated: 2016-04-06T11:35:21.703272848+03:00
+imports:
+- name: github.com/armon/go-radix
+  version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
+- name: github.com/bgentry/speakeasy
+  version: 36e9cfdd690967f4f690c6edcc9ffacd006014a0
+- name: github.com/cihub/seelog
+  version: a113d9f1aa38f42c23712cb7c04855e9b9f30297
+- name: github.com/donovanhide/eventsource
+  version: c3f57f280ec708df24886d9e62f2fd178d69d8e8
+- name: github.com/elodina/go-avro
+  version: 0c8185d9a3ba82aeac98db3313a268a5b6df99b5
+- name: github.com/elodina/go-kafka-avro
+  version: dfcc855c4e687de4f776104570ae4daf05b101f5
+- name: github.com/elodina/go-mesos-utils
+  version: 10d38bbe29809e3b27678a7a1239b32e72d81645
+  subpackages:
+  - pretty
+- name: github.com/elodina/pyrgus
+  version: 99dc620373e6ddb28f81a60d14a0457e89fada56
+  subpackages:
+  - log
+  - avro
+- name: github.com/elodina/siesta
+  version: 3b9fdb08b2de541f86b769f70f172e171a182c3b
+- name: github.com/elodina/siesta-producer
+  version: a374fc36c515243efb438aed41c536af55d8b19b
+- name: github.com/gambol99/go-marathon
+  version: a78e3aa5d5ca7d5b14eafc3239d61bb53af17434
+- name: github.com/gocql/gocql
+  version: 126b7140b27e309e166ae7922261d9972c02e948
+  subpackages:
+  - internal/lru
+  - internal/murmur
+  - internal/streams
+- name: github.com/gogo/protobuf
+  version: 4365f750fe246471f2a03ef5da5231c3565c5628
+  subpackages:
+  - proto
+- name: github.com/golang/glog
+  version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
+- name: github.com/golang/protobuf
+  version: dda510ac0fd43b39770f22ac6260eb91d377bce3
+  subpackages:
+  - proto
+- name: github.com/golang/snappy
+  version: 857ad66e003f466b64f9055849bab122efd4c87a
+- name: github.com/google/go-querystring
+  version: 6bb77fe6f42b85397288d4f6f67ac72f8f400ee7
+  subpackages:
+  - query
+- name: github.com/hailocab/go-hostpool
+  version: e80d13ce29ede4452c43dea11e79b9bc8a15b478
+- name: github.com/mattn/go-isatty
+  version: 56b76bdf51f7708750eac80fa38b952bb9f32639
+- name: github.com/mesos/mesos-go
+  version: 7064d8760d60f029f568b9295e6842612e89e347
+  subpackages:
+  - mesosproto
+  - mesosutil
+  - scheduler
+  - auth
+  - auth/callback
+  - auth/sasl
+  - auth/sasl/mech/crammd5
+  - detector
+  - detector/zoo
+  - mesosproto/scheduler
+  - mesosutil/process
+  - messenger
+  - messenger/sessionid
+  - upid
+  - auth/sasl/mech
+- name: github.com/mitchellh/cli
+  version: 168daae10d6ff81b8b1201b0a4c9607d7e9b82e3
+- name: github.com/pborman/uuid
+  version: c55201b036063326c5b1b89ccfe45a184973d073
+- name: github.com/robfig/cron
+  version: 0f39cf7ebc65a602f45692f9894bd6a193faf8fa
+- name: github.com/samuel/go-zookeeper
+  version: 218e9c81c0dd8b3b18172b2bbfad92cc7d6db55f
+  subpackages:
+  - zk
+- name: github.com/satori/go.uuid
+  version: f9ab0dce87d815821e221626b772e3475a0d2749
+- name: github.com/yanzay/cfg
+  version: 3b647091f880406fdb14edcb309ce750a38d3e85
+- name: github.com/yanzay/log
+  version: 935a77dff2b1097ca76ca6a6c6353050fc9effcf
+- name: golang.org/x/net
+  version: af4fee9d05b66edc24197d189e6118f8ebce8c2b
+  subpackages:
+  - context
+- name: golang.org/x/sys
+  version: 042a8f53ce82bbe081222da955159491e32146a0
+  subpackages:
+  - unix
+- name: gopkg.in/cihub/seelog.v2
+  version: d2c6e5aa9fbfdd1c624e140287063c7730654115
+- name: gopkg.in/inf.v0
+  version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
+- name: gopkg.in/yaml.v2
+  version: a83829b6f1293c91addabc89d0571c246397bbf4
+devImports: []

@@ -1,6 +1,14 @@
 language: go
 
 go:
-  - 1.4
   - 1.5
+  - 1.6
   - tip
+
+install:
+  - go get -u github.com/smartystreets/goconvey
+  - go get -u github.com/Masterminds/glide
+  - glide install
+
+script:
+  - GO15VENDOREXPERIMENT=1 go test -v $(go list ./... | grep -v /vendor/)

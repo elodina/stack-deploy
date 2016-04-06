@@ -22,10 +22,11 @@ type registration struct {
 }
 
 type Server struct {
-	AllowCORS     bool // Enable all handlers to be accessible from any origin
-	ReplayAll     bool // Replay repository even if there's no Last-Event-Id specified
-	BufferSize    int  // How many messages do we let the client get behind before disconnecting
-	Gzip          bool // Enable compression if client can accept it
+	AllowCORS     bool        // Enable all handlers to be accessible from any origin
+	ReplayAll     bool        // Replay repository even if there's no Last-Event-Id specified
+	BufferSize    int         // How many messages do we let the client get behind before disconnecting
+	Gzip          bool        // Enable compression if client can accept it
+	Logger        *log.Logger // Logger is a logger that, when set, will be used for logging debug messages
 	registrations chan *registration
 	pub           chan *outbound
 	subs          chan *subscription
@@ -66,6 +67,8 @@ func (srv *Server) Handler(channel string) http.HandlerFunc {
 		if useGzip {
 			h.Set("Content-Encoding", "gzip")
 		}
+		w.WriteHeader(http.StatusOK)
+
 		sub := &subscription{
 			channel:     channel,
 			lastEventId: req.Header.Get("Last-Event-ID"),
@@ -75,7 +78,7 @@ func (srv *Server) Handler(channel string) http.HandlerFunc {
 		flusher := w.(http.Flusher)
 		notifier := w.(http.CloseNotifier)
 		flusher.Flush()
-		enc := newEncoder(w, useGzip)
+		enc := NewEncoder(w, useGzip)
 		for {
 			select {
 			case <-notifier.CloseNotify():
@@ -87,7 +90,9 @@ func (srv *Server) Handler(channel string) http.HandlerFunc {
 				}
 				if err := enc.Encode(ev); err != nil {
 					srv.unregister <- sub
-					log.Println(err)
+					if srv.Logger != nil {
+						srv.Logger.Println(err)
+					}
 					return
 				}
 				flusher.Flush()

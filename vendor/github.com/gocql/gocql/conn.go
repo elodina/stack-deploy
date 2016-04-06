@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gocql/gocql/internal/lru"
+
 	"github.com/gocql/gocql/internal/streams"
 )
 
@@ -103,6 +105,12 @@ type ConnErrorHandler interface {
 	HandleError(conn *Conn, err error, closed bool)
 }
 
+type connErrorHandlerFn func(conn *Conn, err error, closed bool)
+
+func (fn connErrorHandlerFn) HandleError(conn *Conn, err error, closed bool) {
+	fn(conn, err, closed)
+}
+
 // How many timeouts we will allow to occur before the connection is closed
 // and restarted. This is to prevent a single query timeout from killing a connection
 // which may be serving more queries just fine.
@@ -130,7 +138,8 @@ type Conn struct {
 	addr            string
 	version         uint8
 	currentKeyspace string
-	started         bool
+
+	host *HostInfo
 
 	session *Session
 
@@ -141,8 +150,9 @@ type Conn struct {
 }
 
 // Connect establishes a connection to a Cassandra node.
-// You must also call the Serve method before you can execute any queries.
-func Connect(addr string, cfg *ConnConfig, errorHandler ConnErrorHandler, session *Session) (*Conn, error) {
+func Connect(host *HostInfo, addr string, cfg *ConnConfig,
+	errorHandler ConnErrorHandler, session *Session) (*Conn, error) {
+
 	var (
 		err  error
 		conn net.Conn
@@ -190,19 +200,45 @@ func Connect(addr string, cfg *ConnConfig, errorHandler ConnErrorHandler, sessio
 		quit:         make(chan struct{}),
 		session:      session,
 		streams:      streams.New(cfg.ProtoVersion),
+		host:         host,
 	}
 
 	if cfg.Keepalive > 0 {
 		c.setKeepalive(cfg.Keepalive)
 	}
 
-	go c.serve()
+	frameTicker := make(chan struct{}, 1)
+	startupErr := make(chan error, 1)
+	go func() {
+		for range frameTicker {
+			err := c.recv()
+			startupErr <- err
+			if err != nil {
+				return
+			}
+		}
+	}()
 
-	if err := c.startup(); err != nil {
+	err = c.startup(frameTicker)
+	close(frameTicker)
+	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	c.started = true
+
+	select {
+	case err := <-startupErr:
+		if err != nil {
+			log.Println(err)
+			c.Close()
+			return nil, err
+		}
+	case <-time.After(c.timeout):
+		c.Close()
+		return nil, errors.New("gocql: no response to connection startup within timeout")
+	}
+
+	go c.serve()
 
 	return c, nil
 }
@@ -238,7 +274,7 @@ func (c *Conn) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (c *Conn) startup() error {
+func (c *Conn) startup(frameTicker chan struct{}) error {
 	m := map[string]string{
 		"CQL_VERSION": c.cfg.CQLVersion,
 	}
@@ -247,6 +283,7 @@ func (c *Conn) startup() error {
 		m["COMPRESSION"] = c.compressor.Name()
 	}
 
+	frameTicker <- struct{}{}
 	framer, err := c.exec(&writeStartupFrame{opts: m}, nil)
 	if err != nil {
 		return err
@@ -263,13 +300,13 @@ func (c *Conn) startup() error {
 	case *readyFrame:
 		return nil
 	case *authenticateFrame:
-		return c.authenticateHandshake(v)
+		return c.authenticateHandshake(v, frameTicker)
 	default:
 		return NewErrProtocol("Unknown type of response to startup frame: %s", v)
 	}
 }
 
-func (c *Conn) authenticateHandshake(authFrame *authenticateFrame) error {
+func (c *Conn) authenticateHandshake(authFrame *authenticateFrame, frameTicker chan struct{}) error {
 	if c.auth == nil {
 		return fmt.Errorf("authentication required (using %q)", authFrame.class)
 	}
@@ -282,6 +319,7 @@ func (c *Conn) authenticateHandshake(authFrame *authenticateFrame) error {
 	req := &writeAuthResponseFrame{data: resp}
 
 	for {
+		frameTicker <- struct{}{}
 		framer, err := c.exec(req, nil)
 		if err != nil {
 			return err
@@ -322,18 +360,16 @@ func (c *Conn) closeWithError(err error) {
 		return
 	}
 
+	// we should attempt to deliver the error back to the caller if it
+	// exists
 	if err != nil {
-		// we should attempt to deliver the error back to the caller if it
-		// exists
 		c.mu.RLock()
 		for _, req := range c.calls {
 			// we need to send the error to all waiting queries, put the state
 			// of this conn into not active so that it can not execute any queries.
-			if err != nil {
-				select {
-				case req.resp <- err:
-				default:
-				}
+			select {
+			case req.resp <- err:
+			case <-req.timeout:
 			}
 		}
 		c.mu.RUnlock()
@@ -343,7 +379,7 @@ func (c *Conn) closeWithError(err error) {
 	close(c.quit)
 	c.conn.Close()
 
-	if c.started && err != nil {
+	if err != nil {
 		c.errorHandler.HandleError(c, err, true)
 	}
 }
@@ -397,7 +433,12 @@ func (c *Conn) recv() error {
 		return fmt.Errorf("gocql: frame header stream is beyond call exepected bounds: %d", head.stream)
 	} else if head.stream == -1 {
 		// TODO: handle cassandra event frames, we shouldnt get any currently
-		return c.discardFrame(head)
+		framer := newFramer(c, c, c.compressor, c.version)
+		if err := framer.readFrame(&head); err != nil {
+			return err
+		}
+		go c.session.handleEvent(framer)
+		return nil
 	} else if head.stream <= 0 {
 		// reserved stream that we dont use, probably due to a protocol error
 		// or a bug in Cassandra, this should be an error, parse it and return.
@@ -449,14 +490,6 @@ func (c *Conn) recv() error {
 	return nil
 }
 
-type callReq struct {
-	// could use a waitgroup but this allows us to do timeouts on the read/send
-	resp     chan error
-	framer   *framer
-	timeout  chan struct{} // indicates to recv() that a call has timedout
-	streamID int           // current stream in use
-}
-
 func (c *Conn) releaseStream(stream int) {
 	c.mu.Lock()
 	call := c.calls[stream]
@@ -488,11 +521,20 @@ var (
 	}
 )
 
+type callReq struct {
+	// could use a waitgroup but this allows us to do timeouts on the read/send
+	resp     chan error
+	framer   *framer
+	timeout  chan struct{} // indicates to recv() that a call has timedout
+	streamID int           // current stream in use
+
+	timer *time.Timer
+}
+
 func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 	// TODO: move tracer onto conn
 	stream, ok := c.streams.GetStream()
 	if !ok {
-		fmt.Println(c.streams)
 		return nil, ErrNoStreams
 	}
 
@@ -520,6 +562,10 @@ func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 
 	err := req.writeFrame(framer, stream)
 	if err != nil {
+		// closeWithError will block waiting for this stream to either receive a response
+		// or for us to timeout, close the timeout chan here. Im not entirely sure
+		// but we should not get a response after an error on the write side.
+		close(call.timeout)
 		// I think this is the correct thing to do, im not entirely sure. It is not
 		// ideal as readers might still get some data, but they probably wont.
 		// Here we need to be careful as the stream is not available and if all
@@ -529,8 +575,27 @@ func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 		return nil, err
 	}
 
+	var timeoutCh <-chan time.Time
+	if c.timeout > 0 {
+		if call.timer == nil {
+			call.timer = time.NewTimer(0)
+			<-call.timer.C
+		} else {
+			if !call.timer.Stop() {
+				select {
+				case <-call.timer.C:
+				default:
+				}
+			}
+		}
+
+		call.timer.Reset(c.timeout)
+		timeoutCh = call.timer.C
+	}
+
 	select {
 	case err := <-call.resp:
+		close(call.timeout)
 		if err != nil {
 			if !c.Closed() {
 				// if the connection is closed then we cant release the stream,
@@ -541,7 +606,7 @@ func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 			}
 			return nil, err
 		}
-	case <-time.After(c.timeout):
+	case <-timeoutCh:
 		close(call.timeout)
 		c.handleTimeout()
 		return nil, ErrTimeoutNoResponse
@@ -564,25 +629,32 @@ func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 	return framer, nil
 }
 
-func (c *Conn) prepareStatement(stmt string, tracer Tracer) (*QueryInfo, error) {
-	stmtsLRU.Lock()
-	if stmtsLRU.lru == nil {
-		initStmtsLRU(defaultMaxPreparedStmts)
-	}
+type preparedStatment struct {
+	id       []byte
+	request  preparedMetadata
+	response resultMetadata
+}
 
-	stmtCacheKey := c.addr + c.currentKeyspace + stmt
+type inflightPrepare struct {
+	wg  sync.WaitGroup
+	err error
 
-	if val, ok := stmtsLRU.lru.Get(stmtCacheKey); ok {
-		stmtsLRU.Unlock()
-		flight := val.(*inflightPrepare)
+	preparedStatment *preparedStatment
+}
+
+func (c *Conn) prepareStatement(stmt string, tracer Tracer) (*preparedStatment, error) {
+	stmtCacheKey := c.session.stmtsLRU.keyFor(c.addr, c.currentKeyspace, stmt)
+	flight, ok := c.session.stmtsLRU.execIfMissing(stmtCacheKey, func(lru *lru.Cache) *inflightPrepare {
+		flight := new(inflightPrepare)
+		flight.wg.Add(1)
+		lru.Add(stmtCacheKey, flight)
+		return flight
+	})
+
+	if ok {
 		flight.wg.Wait()
-		return &flight.info, flight.err
+		return flight.preparedStatment, flight.err
 	}
-
-	flight := new(inflightPrepare)
-	flight.wg.Add(1)
-	stmtsLRU.lru.Add(stmtCacheKey, flight)
-	stmtsLRU.Unlock()
 
 	prep := &writePrepareFrame{
 		statement: stmt,
@@ -610,14 +682,15 @@ func (c *Conn) prepareStatement(stmt string, tracer Tracer) (*QueryInfo, error) 
 
 	switch x := frame.(type) {
 	case *resultPreparedFrame:
-		// defensivly copy as we will recycle the underlying buffer after we
-		// return.
-		flight.info.Id = copyBytes(x.preparedID)
-		// the type info's should _not_ have a reference to the framers read buffer,
-		// therefore we can just copy them directly.
-		flight.info.Args = x.reqMeta.columns
-		flight.info.PKeyColumns = x.reqMeta.pkeyColumns
-		flight.info.Rval = x.respMeta.columns
+		flight.preparedStatment = &preparedStatment{
+			// defensivly copy as we will recycle the underlying buffer after we
+			// return.
+			id: copyBytes(x.preparedID),
+			// the type info's should _not_ have a reference to the framers read buffer,
+			// therefore we can just copy them directly.
+			request:  x.reqMeta,
+			response: x.respMeta,
+		}
 	case error:
 		flight.err = x
 	default:
@@ -626,14 +699,12 @@ func (c *Conn) prepareStatement(stmt string, tracer Tracer) (*QueryInfo, error) 
 	flight.wg.Done()
 
 	if flight.err != nil {
-		stmtsLRU.Lock()
-		stmtsLRU.lru.Remove(stmtCacheKey)
-		stmtsLRU.Unlock()
+		c.session.stmtsLRU.remove(stmtCacheKey)
 	}
 
 	framerPool.Put(framer)
 
-	return &flight.info, flight.err
+	return flight.preparedStatment, flight.err
 }
 
 func (c *Conn) executeQuery(qry *Query) *Iter {
@@ -652,10 +723,15 @@ func (c *Conn) executeQuery(qry *Query) *Iter {
 		params.pageSize = qry.pageSize
 	}
 
-	var frame frameWriter
+	var (
+		frame frameWriter
+		info  *preparedStatment
+	)
+
 	if qry.shouldPrepare() {
 		// Prepare all DML queries. Other queries can not be prepared.
-		info, err := c.prepareStatement(qry.stmt, qry.trace)
+		var err error
+		info, err = c.prepareStatement(qry.stmt, qry.trace)
 		if err != nil {
 			return &Iter{err: err}
 		}
@@ -665,19 +741,25 @@ func (c *Conn) executeQuery(qry *Query) *Iter {
 		if qry.binding == nil {
 			values = qry.values
 		} else {
-			values, err = qry.binding(info)
+			values, err = qry.binding(&QueryInfo{
+				Id:          info.id,
+				Args:        info.request.columns,
+				Rval:        info.response.columns,
+				PKeyColumns: info.request.pkeyColumns,
+			})
+
 			if err != nil {
 				return &Iter{err: err}
 			}
 		}
 
-		if len(values) != len(info.Args) {
-			return &Iter{err: ErrQueryArgLength}
+		if len(values) != info.request.actualColCount {
+			return &Iter{err: fmt.Errorf("gocql: expected %d values send got %d", info.request.actualColCount, len(values))}
 		}
 
 		params.values = make([]queryValues, len(values))
 		for i := 0; i < len(values); i++ {
-			val, err := Marshal(info.Args[i].TypeInfo, values[i])
+			val, err := Marshal(info.request.columns[i].TypeInfo, values[i])
 			if err != nil {
 				return &Iter{err: err}
 			}
@@ -687,8 +769,10 @@ func (c *Conn) executeQuery(qry *Query) *Iter {
 			// TODO: handle query binding names
 		}
 
+		params.skipMeta = !qry.disableSkipMetadata
+
 		frame = &writeExecuteFrame{
-			preparedID: info.Id,
+			preparedID: info.id,
 			params:     params,
 		}
 	} else {
@@ -717,18 +801,29 @@ func (c *Conn) executeQuery(qry *Query) *Iter {
 		return &Iter{framer: framer}
 	case *resultRowsFrame:
 		iter := &Iter{
-			meta:   x.meta,
-			rows:   x.rows,
-			framer: framer,
+			meta:    x.meta,
+			framer:  framer,
+			numRows: x.numRows,
+		}
+
+		if params.skipMeta {
+			if info != nil {
+				iter.meta = info.response
+				iter.meta.pagingState = x.meta.pagingState
+			} else {
+				return &Iter{framer: framer, err: errors.New("gocql: did not receive metadata but prepared info is nil")}
+			}
+		} else {
+			iter.meta = x.meta
 		}
 
 		if len(x.meta.pagingState) > 0 && !qry.disableAutoPage {
 			iter.next = &nextIter{
 				qry: *qry,
-				pos: int((1 - qry.prefetch) * float64(len(iter.rows))),
+				pos: int((1 - qry.prefetch) * float64(x.numRows)),
 			}
 
-			iter.next.qry.pageState = x.meta.pagingState
+			iter.next.qry.pageState = copyBytes(x.meta.pagingState)
 			if iter.next.pos < 1 {
 				iter.next.pos = 1
 			}
@@ -737,22 +832,22 @@ func (c *Conn) executeQuery(qry *Query) *Iter {
 		return iter
 	case *resultKeyspaceFrame:
 		return &Iter{framer: framer}
-	case *resultSchemaChangeFrame, *schemaChangeKeyspace, *schemaChangeTable, *schemaChangeFunction:
+	case *schemaChangeKeyspace, *schemaChangeTable, *schemaChangeFunction:
 		iter := &Iter{framer: framer}
-		c.awaitSchemaAgreement()
+		if err := c.awaitSchemaAgreement(); err != nil {
+			// TODO: should have this behind a flag
+			log.Println(err)
+		}
 		// dont return an error from this, might be a good idea to give a warning
 		// though. The impact of this returning an error would be that the cluster
 		// is not consistent with regards to its schema.
 		return iter
 	case *RequestErrUnprepared:
-		stmtsLRU.Lock()
-		stmtCacheKey := c.addr + c.currentKeyspace + qry.stmt
-		if _, ok := stmtsLRU.lru.Get(stmtCacheKey); ok {
-			stmtsLRU.lru.Remove(stmtCacheKey)
-			stmtsLRU.Unlock()
+		stmtCacheKey := c.session.stmtsLRU.keyFor(c.addr, c.currentKeyspace, qry.stmt)
+		if c.session.stmtsLRU.remove(stmtCacheKey) {
 			return c.executeQuery(qry)
 		}
-		stmtsLRU.Unlock()
+
 		return &Iter{err: x, framer: framer}
 	case error:
 		return &Iter{err: x, framer: framer}
@@ -810,9 +905,9 @@ func (c *Conn) UseKeyspace(keyspace string) error {
 	return nil
 }
 
-func (c *Conn) executeBatch(batch *Batch) (*Iter, error) {
+func (c *Conn) executeBatch(batch *Batch) *Iter {
 	if c.version == protoVersion1 {
-		return nil, ErrUnsupported
+		return &Iter{err: ErrUnsupported}
 	}
 
 	n := len(batch.Entries)
@@ -824,7 +919,7 @@ func (c *Conn) executeBatch(batch *Batch) (*Iter, error) {
 		defaultTimestamp:  batch.defaultTimestamp,
 	}
 
-	stmts := make(map[string]string)
+	stmts := make(map[string]string, len(batch.Entries))
 
 	for i := 0; i < n; i++ {
 		entry := &batch.Entries[i]
@@ -832,32 +927,37 @@ func (c *Conn) executeBatch(batch *Batch) (*Iter, error) {
 		if len(entry.Args) > 0 || entry.binding != nil {
 			info, err := c.prepareStatement(entry.Stmt, nil)
 			if err != nil {
-				return nil, err
+				return &Iter{err: err}
 			}
 
-			var args []interface{}
+			var values []interface{}
 			if entry.binding == nil {
-				args = entry.Args
+				values = entry.Args
 			} else {
-				args, err = entry.binding(info)
+				values, err = entry.binding(&QueryInfo{
+					Id:          info.id,
+					Args:        info.request.columns,
+					Rval:        info.response.columns,
+					PKeyColumns: info.request.pkeyColumns,
+				})
 				if err != nil {
-					return nil, err
+					return &Iter{err: err}
 				}
 			}
 
-			if len(args) != len(info.Args) {
-				return nil, ErrQueryArgLength
+			if len(values) != info.request.actualColCount {
+				return &Iter{err: fmt.Errorf("gocql: batch statment %d expected %d values send got %d", i, info.request.actualColCount, len(values))}
 			}
 
-			b.preparedID = info.Id
-			stmts[string(info.Id)] = entry.Stmt
+			b.preparedID = info.id
+			stmts[string(info.id)] = entry.Stmt
 
-			b.values = make([]queryValues, len(info.Args))
+			b.values = make([]queryValues, info.request.actualColCount)
 
-			for j := 0; j < len(info.Args); j++ {
-				val, err := Marshal(info.Args[j].TypeInfo, args[j])
+			for j := 0; j < info.request.actualColCount; j++ {
+				val, err := Marshal(info.request.columns[j].TypeInfo, values[j])
 				if err != nil {
-					return nil, err
+					return &Iter{err: err}
 				}
 
 				b.values[j].value = val
@@ -871,24 +971,23 @@ func (c *Conn) executeBatch(batch *Batch) (*Iter, error) {
 	// TODO: should batch support tracing?
 	framer, err := c.exec(req, nil)
 	if err != nil {
-		return nil, err
+		return &Iter{err: err}
 	}
 
 	resp, err := framer.parseFrame()
 	if err != nil {
-		return nil, err
+		return &Iter{err: err, framer: framer}
 	}
 
 	switch x := resp.(type) {
 	case *resultVoidFrame:
 		framerPool.Put(framer)
-		return nil, nil
+		return &Iter{}
 	case *RequestErrUnprepared:
 		stmt, found := stmts[string(x.StatementId)]
 		if found {
-			stmtsLRU.Lock()
-			stmtsLRU.lru.Remove(c.addr + c.currentKeyspace + stmt)
-			stmtsLRU.Unlock()
+			key := c.session.stmtsLRU.keyFor(c.addr, c.currentKeyspace, stmt)
+			c.session.stmtsLRU.remove(key)
 		}
 
 		framerPool.Put(framer)
@@ -896,22 +995,20 @@ func (c *Conn) executeBatch(batch *Batch) (*Iter, error) {
 		if found {
 			return c.executeBatch(batch)
 		} else {
-			return nil, x
+			return &Iter{err: err, framer: framer}
 		}
 	case *resultRowsFrame:
 		iter := &Iter{
-			meta:   x.meta,
-			rows:   x.rows,
-			framer: framer,
+			meta:    x.meta,
+			framer:  framer,
+			numRows: x.numRows,
 		}
 
-		return iter, nil
+		return iter
 	case error:
-		framerPool.Put(framer)
-		return nil, x
+		return &Iter{err: x, framer: framer}
 	default:
-		framerPool.Put(framer)
-		return nil, NewErrProtocol("Unknown type in response to batch statement: %s", x)
+		return &Iter{err: NewErrProtocol("Unknown type in response to batch statement: %s", x), framer: framer}
 	}
 }
 
@@ -939,14 +1036,21 @@ func (c *Conn) awaitSchemaAgreement() (err error) {
 		localSchemas = "SELECT schema_version FROM system.local WHERE key='local'"
 	)
 
+	var versions map[string]struct{}
+
 	endDeadline := time.Now().Add(c.session.cfg.MaxWaitSchemaAgreement)
 	for time.Now().Before(endDeadline) {
 		iter := c.query(peerSchemas)
 
-		versions := make(map[string]struct{})
+		versions = make(map[string]struct{})
 
 		var schemaVersion string
 		for iter.Scan(&schemaVersion) {
+			if schemaVersion == "" {
+				log.Println("skipping peer entry with empty schema_version")
+				continue
+			}
+
 			versions[schemaVersion] = struct{}{}
 			schemaVersion = ""
 		}
@@ -977,14 +1081,13 @@ func (c *Conn) awaitSchemaAgreement() (err error) {
 		return
 	}
 
-	// not exported
-	return errors.New("gocql: cluster schema versions not consistent")
-}
+	schemas := make([]string, 0, len(versions))
+	for schema := range versions {
+		schemas = append(schemas, schema)
+	}
 
-type inflightPrepare struct {
-	info QueryInfo
-	err  error
-	wg   sync.WaitGroup
+	// not exported
+	return fmt.Errorf("gocql: cluster schema versions not consistent: %+v", schemas)
 }
 
 var (

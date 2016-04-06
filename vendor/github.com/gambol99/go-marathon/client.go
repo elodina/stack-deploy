@@ -49,7 +49,7 @@ type Marathon interface {
 	// delete an application
 	DeleteApplication(name string) (*DeploymentID, error)
 	// update an application in marathon
-	UpdateApplication(application *Application) (*DeploymentID, error)
+	UpdateApplication(application *Application, force bool) (*DeploymentID, error)
 	// a list of deployments on a application
 	ApplicationDeployments(name string) ([]*DeploymentID, error)
 	// scale a application
@@ -58,8 +58,10 @@ type Marathon interface {
 	RestartApplication(name string, force bool) (*DeploymentID, error)
 	// get a list of applications from marathon
 	Applications(url.Values) (*Applications, error)
-	// get a specific application
+	// get an application by name
 	Application(name string) (*Application, error)
+	// get an application by name and version
+	ApplicationByVersion(name, version string) (*Application, error)
 	// wait of application
 	WaitOnApplication(name string, timeout time.Duration) error
 
@@ -136,16 +138,10 @@ var (
 	ErrInvalidEndpoint = errors.New("invalid Marathon endpoint specified")
 	// ErrInvalidResponse is thrown when marathon responds with invalid or error response
 	ErrInvalidResponse = errors.New("invalid response from Marathon")
-	// ErrDoesNotExist is thrown when the resource does not exists
-	ErrDoesNotExist = errors.New("the resource does not exist")
 	// ErrMarathonDown is thrown when all the marathon endpoints are down
 	ErrMarathonDown = errors.New("all the Marathon hosts are presently down")
-	// ErrInvalidArgument is thrown when invalid argument
-	ErrInvalidArgument = errors.New("the argument passed is invalid")
 	// ErrTimeoutError is thrown when the operation has timed out
 	ErrTimeoutError = errors.New("the operation has timed out")
-	// ErrConflict is thrown when the resource is conflicting (ie. app already exists)
-	ErrConflict = errors.New("conflicting resource")
 )
 
 type marathonClient struct {
@@ -171,22 +167,28 @@ type marathonClient struct {
 // NewClient creates a new marathon client
 //		config:			the configuration to use
 func NewClient(config Config) (Marathon, error) {
-	// step: we parse the url and build a cluster
-	cluster, err := newCluster(config.URL)
+	// step: if no http client, set to default
+	if config.HTTPClient == nil {
+		config.HTTPClient = http.DefaultClient
+	}
+	// step: create a new cluster
+	cluster, err := newCluster(config.HTTPClient, config.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	client := new(marathonClient)
-	client.config = config
-	client.listeners = make(map[EventsChannel]int, 0)
-	client.cluster = cluster
-	client.httpClient = &http.Client{
-		Timeout: (time.Duration(config.RequestTimeout) * time.Second),
+	debugLogOutput := config.LogOutput
+	if debugLogOutput == nil {
+		debugLogOutput = ioutil.Discard
 	}
-	client.debugLog = log.New(config.LogOutput, "", 0)
 
-	return client, nil
+	return &marathonClient{
+		config:     config,
+		listeners:  make(map[EventsChannel]int, 0),
+		cluster:    cluster,
+		httpClient: config.HTTPClient,
+		debugLog:   log.New(debugLogOutput, "", 0),
+	}, nil
 }
 
 // GetMarathonURL retrieves the marathon url
@@ -202,7 +204,6 @@ func (r *marathonClient) Ping() (bool, error) {
 	return true, nil
 }
 
-// TODO remove post, this is a GET request!
 func (r *marathonClient) apiGet(uri string, post, result interface{}) error {
 	return r.apiCall("GET", uri, post, result)
 }
@@ -266,8 +267,7 @@ func (r *marathonClient) apiCall(method, uri string, body, result interface{}) e
 		r.debugLog.Printf("apiCall(): %v %v returned %v %s\n", request.Method, request.URL.String(), response.Status, oneLogLine(respBody))
 	}
 
-	switch {
-	case response.StatusCode >= 200 && response.StatusCode <= 299:
+	if response.StatusCode >= 200 && response.StatusCode <= 299 {
 		if result != nil {
 			if err := json.Unmarshal(respBody, result); err != nil {
 				r.debugLog.Printf("apiCall(): failed to unmarshall the response from marathon, error: %s\n", err)
@@ -275,20 +275,14 @@ func (r *marathonClient) apiCall(method, uri string, body, result interface{}) e
 			}
 		}
 		return nil
-
-	case response.StatusCode == 404:
-		return ErrDoesNotExist
-
-	case response.StatusCode == 409:
-		return ErrConflict
-
-	case response.StatusCode >= 500:
-		return ErrInvalidResponse
-
-	default:
-		r.debugLog.Printf("apiCall(): unknown error: %s", oneLogLine(respBody))
-		return ErrInvalidResponse
 	}
+
+	apiErr, err := NewAPIError(response.StatusCode, respBody)
+	if err != nil {
+		r.debugLog.Printf("apiCall(): failed to parse error response '%s' with status code %d, error: %s", respBody, response.StatusCode, err)
+	}
+
+	return apiErr
 }
 
 var oneLogLineRegex = regexp.MustCompile(`(?m)^\s*`)

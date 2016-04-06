@@ -28,28 +28,31 @@ type Docker struct {
 }
 
 func (d *Docker) MarathonContainer() *marathon.Container {
+	params := d.marathonParameters()
+	portMappings := d.marathonPortMappings()
+	volumes := d.marathonVolumes()
 	return &marathon.Container{
 		Type: "DOCKER",
 		Docker: &marathon.Docker{
-			ForcePullImage: d.ForcePullImage,
+			ForcePullImage: &d.ForcePullImage,
 			Image:          d.Image,
 			Network:        d.Network,
-			Parameters:     d.marathonParameters(),
-			PortMappings:   d.marathonPortMappings(),
-			Privileged:     d.Privileged,
+			Parameters:     &params,
+			PortMappings:   &portMappings,
+			Privileged:     &d.Privileged,
 		},
-		Volumes: d.marathonVolumes(),
+		Volumes: &volumes,
 	}
 }
 
-func (d *Docker) marathonParameters() []*marathon.Parameters {
+func (d *Docker) marathonParameters() []marathon.Parameters {
 	if len(d.Parameters) == 0 {
 		return nil
 	}
 
-	parameters := make([]*marathon.Parameters, 0, len(d.Parameters))
+	parameters := make([]marathon.Parameters, 0, len(d.Parameters))
 	for k, v := range d.Parameters {
-		parameters = append(parameters, &marathon.Parameters{
+		parameters = append(parameters, marathon.Parameters{
 			Key:   k,
 			Value: v,
 		})
@@ -58,27 +61,27 @@ func (d *Docker) marathonParameters() []*marathon.Parameters {
 	return parameters
 }
 
-func (d *Docker) marathonPortMappings() []*marathon.PortMapping {
+func (d *Docker) marathonPortMappings() []marathon.PortMapping {
 	if len(d.PortMappings) == 0 {
 		return nil
 	}
 
-	mappings := make([]*marathon.PortMapping, len(d.PortMappings))
+	mappings := make([]marathon.PortMapping, len(d.PortMappings))
 	for idx, mapping := range d.PortMappings {
-		mappings[idx] = mapping.Marathon()
+		mappings[idx] = *mapping.Marathon()
 	}
 
 	return mappings
 }
 
-func (d *Docker) marathonVolumes() []*marathon.Volume {
+func (d *Docker) marathonVolumes() []marathon.Volume {
 	if len(d.Volumes) == 0 {
 		return nil
 	}
 
-	volumes := make([]*marathon.Volume, len(d.Volumes))
+	volumes := make([]marathon.Volume, len(d.Volumes))
 	for idx, volume := range d.Volumes {
-		volumes[idx] = volume.Marathon()
+		volumes[idx] = *volume.Marathon()
 	}
 
 	return volumes

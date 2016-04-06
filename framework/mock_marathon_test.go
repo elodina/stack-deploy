@@ -176,7 +176,7 @@ func (m *MockMarathon) Unsubscribe(string) error {
 	return nil
 }
 
-func (m *MockMarathon) UpdateApplication(application *marathon.Application) (*marathon.DeploymentID, error) {
+func (m *MockMarathon) UpdateApplication(application *marathon.Application, force bool) (*marathon.DeploymentID, error) {
 	return nil, nil
 }
 
@@ -197,6 +197,10 @@ func (m *MockMarathon) WaitOnGroup(name string, timeout time.Duration) error {
 }
 
 func (m *MockMarathon) ListApplications(url.Values) ([]string, error) {
+	return nil, nil
+}
+
+func (m *MockMarathon) ApplicationByVersion(string, string) (*marathon.Application, error) {
 	return nil, nil
 }
 

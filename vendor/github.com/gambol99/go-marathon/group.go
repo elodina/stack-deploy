@@ -90,7 +90,7 @@ func (r *marathonClient) HasGroup(name string) (bool, error) {
 	uri := fmt.Sprintf("%s/%s", marathonAPIGroups, trimRootPath(name))
 	err := r.apiCall("GET", uri, "", nil)
 	if err != nil {
-		if err == ErrDoesNotExist {
+		if apiErr, ok := err.(*APIError); ok && apiErr.ErrCode == ErrCodeNotFound {
 			return false, nil
 		}
 		return false, err
@@ -134,9 +134,9 @@ func (r *marathonClient) WaitOnGroup(name string, timeout time.Duration) error {
 
 					if application.Tasks == nil {
 						allRunning = false
-					} else if len(application.Tasks) != appID.Instances {
+					} else if len(application.Tasks) != *appID.Instances {
 						allRunning = false
-					} else if application.TasksRunning != appID.Instances {
+					} else if application.TasksRunning != *appID.Instances {
 						allRunning = false
 					} else if len(application.DeploymentIDs()) > 0 {
 						allRunning = false

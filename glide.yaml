@@ -1,0 +1,23 @@
+package: github.com/elodina/stack-deploy
+import:
+- package: github.com/elodina/go-mesos-utils
+  subpackages:
+  - pretty
+- package: github.com/elodina/pyrgus
+  subpackages:
+  - log
+- package: github.com/gambol99/go-marathon
+- package: github.com/gocql/gocql
+- package: github.com/golang/protobuf
+  subpackages:
+  - proto
+- package: github.com/mesos/mesos-go
+  subpackages:
+  - mesosproto
+  - mesosutil
+  - scheduler
+- package: github.com/mitchellh/cli
+- package: github.com/robfig/cron
+- package: github.com/satori/go.uuid
+- package: github.com/yanzay/log
+- package: gopkg.in/yaml.v2

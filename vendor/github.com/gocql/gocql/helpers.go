@@ -5,6 +5,7 @@
 package gocql
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"strings"
@@ -20,7 +21,7 @@ type RowData struct {
 
 func goType(t TypeInfo) reflect.Type {
 	switch t.Type() {
-	case TypeVarchar, TypeAscii, TypeInet:
+	case TypeVarchar, TypeAscii, TypeInet, TypeText:
 		return reflect.TypeOf(*new(string))
 	case TypeBigInt, TypeCounter:
 		return reflect.TypeOf(*new(int64))
@@ -59,6 +60,60 @@ func goType(t TypeInfo) reflect.Type {
 
 func dereference(i interface{}) interface{} {
 	return reflect.Indirect(reflect.ValueOf(i)).Interface()
+}
+
+func getCassandraType(name string) Type {
+	switch name {
+	case "ascii":
+		return TypeAscii
+	case "bigint":
+		return TypeBigInt
+	case "blob":
+		return TypeBlob
+	case "boolean":
+		return TypeBoolean
+	case "counter":
+		return TypeCounter
+	case "decimal":
+		return TypeDecimal
+	case "double":
+		return TypeDouble
+	case "float":
+		return TypeFloat
+	case "int":
+		return TypeInt
+	case "timestamp":
+		return TypeTimestamp
+	case "uuid":
+		return TypeUUID
+	case "varchar", "text":
+		return TypeVarchar
+	case "varint":
+		return TypeVarint
+	case "timeuuid":
+		return TypeTimeUUID
+	case "inet":
+		return TypeInet
+	case "MapType":
+		return TypeMap
+	case "ListType":
+		return TypeList
+	case "SetType":
+		return TypeSet
+	case "TupleType":
+		return TypeTuple
+	default:
+		if strings.HasPrefix(name, "set") {
+			return TypeSet
+		} else if strings.HasPrefix(name, "list") {
+			return TypeList
+		} else if strings.HasPrefix(name, "map") {
+			return TypeMap
+		} else if strings.HasPrefix(name, "tuple") {
+			return TypeTuple
+		}
+		return TypeCustom
+	}
 }
 
 func getApacheCassandraType(class string) Type {
@@ -128,16 +183,34 @@ func (r *RowData) rowMap(m map[string]interface{}) {
 	}
 }
 
+// TupeColumnName will return the column name of a tuple value in a column named
+// c at index n. It should be used if a specific element within a tuple is needed
+// to be extracted from a map returned from SliceMap or MapScan.
+func TupleColumnName(c string, n int) string {
+	return fmt.Sprintf("%s[%d]", c, n)
+}
+
 func (iter *Iter) RowData() (RowData, error) {
 	if iter.err != nil {
 		return RowData{}, iter.err
 	}
+
 	columns := make([]string, 0)
 	values := make([]interface{}, 0)
+
 	for _, column := range iter.Columns() {
-		val := column.TypeInfo.New()
-		columns = append(columns, column.Name)
-		values = append(values, val)
+
+		switch c := column.TypeInfo.(type) {
+		case TupleTypeInfo:
+			for i, elem := range c.Elems {
+				columns = append(columns, TupleColumnName(column.Name, i))
+				values = append(values, elem.New())
+			}
+		default:
+			val := column.TypeInfo.New()
+			columns = append(columns, column.Name)
+			values = append(values, val)
+		}
 	}
 	rowData := RowData{
 		Columns: columns,

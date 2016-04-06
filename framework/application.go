@@ -335,21 +335,28 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 }
 
 func (a *Application) createApplication(context *StackContext, mesos MesosState) *marathon.Application {
+	launchCommand := a.getLaunchCommand()
+	env := a.getEnv(context)
+	instances := a.GetInstances(mesos)
+	requirePorts := len(a.Ports) > 0
+	uris := append(a.ArtifactURLs, a.AdditionalArtifacts...)
+	healthchecks := a.getHealthchecks()
+	labels := a.getLabelsFromContext(context)
 	application := &marathon.Application{
 		ID:           a.ID,
-		Cmd:          a.getLaunchCommand(),
-		Args:         a.Args,
-		Env:          a.getEnv(context),
-		Instances:    a.GetInstances(mesos),
+		Cmd:          &launchCommand,
+		Args:         &a.Args,
+		Env:          &env,
+		Instances:    &instances,
 		CPUs:         a.Cpu,
-		Mem:          a.Mem,
+		Mem:          &a.Mem,
 		Ports:        a.Ports,
-		RequirePorts: len(a.Ports) > 0,
-		Uris:         append(a.ArtifactURLs, a.AdditionalArtifacts...),
+		RequirePorts: &requirePorts,
+		Uris:         &uris,
 		User:         a.User,
-		HealthChecks: a.getHealthchecks(),
-		Constraints:  a.Constraints,
-		Labels:       a.getLabelsFromContext(context),
+		HealthChecks: &healthchecks,
+		Constraints:  &a.Constraints,
+		Labels:       &labels,
 		Container:    a.getContainer(),
 	}
 	return application
@@ -475,16 +482,18 @@ func (a *Application) GetConstraints() map[string][]constraints.Constraint {
 	return constraints
 }
 
-func (a *Application) getHealthchecks() []*marathon.HealthCheck {
+func (a *Application) getHealthchecks() []marathon.HealthCheck {
 	if a.Healthcheck != "" {
-		return []*marathon.HealthCheck{
-			&marathon.HealthCheck{
+		portIndex := 0
+		maxFailures := 18
+		return []marathon.HealthCheck{
+			marathon.HealthCheck{
 				Protocol:               "HTTP",
-				Path:                   a.Healthcheck,
+				Path:                   &a.Healthcheck,
 				GracePeriodSeconds:     120,
 				IntervalSeconds:        10,
-				PortIndex:              0,
-				MaxConsecutiveFailures: 18,
+				PortIndex:              &portIndex,
+				MaxConsecutiveFailures: &maxFailures,
 				TimeoutSeconds:         30,
 			},
 		}

@@ -128,3 +128,7 @@ func (s *MockSchedulerDriver) ReconcileTasks(statuses []*mesos.TaskStatus) (meso
 	s.ReconcileTasksCount++
 	return s.ReconcileTasksStatus, s.ReconcileTasksError
 }
+
+func (s *MockSchedulerDriver) AcceptOffers([]*mesos.OfferID, []*mesos.Offer_Operation, *mesos.Filters) (mesos.Status, error) {
+	return mesos.Status_DRIVER_RUNNING, nil
+}
