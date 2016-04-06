@@ -8,4 +8,4 @@ go:
 install: true
 
 script:
-  - GO15VENDOREXPERIMENT=1 go test ./...
+  - GO15VENDOREXPERIMENT=1 go test -v $(go list ./... | grep -v /vendor/)
