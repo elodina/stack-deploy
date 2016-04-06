@@ -167,7 +167,7 @@ func (sc *ServerCommand) Run(args []string) int {
 		stateStorage = new(framework.NoopStateStorage)
 	}
 
-	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler)
+	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler, *dev)
 	if key != "" {
 		fmt.Printf("***\nAdmin user key: %s\n***\n", key)
 	}
