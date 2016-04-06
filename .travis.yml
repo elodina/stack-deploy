@@ -1,6 +1,11 @@
 language: go
 
 go:
-  - 1.4
   - 1.5
+  - 1.6
   - tip
+
+install: true
+
+script:
+  - GO15VENDOREXPERIMENT=1 go test ./...
