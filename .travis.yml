@@ -5,7 +5,8 @@ go:
   - 1.6
   - tip
 
-install: true
+install:
+  - go get -u github.com/smartystreets/goconvey
 
 script:
   - GO15VENDOREXPERIMENT=1 go test -v $(go list ./... | grep -v /vendor/)
