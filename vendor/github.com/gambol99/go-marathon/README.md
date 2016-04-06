@@ -41,8 +41,7 @@ applications, err := client.Applications()
 ...
 ```
 
-Note, you can also specify multiple endpoint for Marathon (i.e. you have setup Marathon in HA mode and
-having multiple running)
+Note, you can also specify multiple endpoint for Marathon (i.e. you have setup Marathon in HA mode and having multiple running)
 
 ```Go
 marathonURL := "http://10.241.1.71:8080,10.241.1.72:8080,10.241.1.73:8080"
@@ -50,6 +49,28 @@ marathonURL := "http://10.241.1.71:8080,10.241.1.72:8080,10.241.1.73:8080"
 
 The first one specified will be used, if that goes offline the member is marked as *"unavailable"* and a
 background process will continue to ping the member until it's back online.
+
+### Custom HTTP Client
+
+If you wish to override the http client (by default http.DefaultClient) used by the API; use cases bypassing TLS verification, load root CA's or change the timeouts etc, you can pass a custom client in the config.
+
+```Go
+marathonURL := "http://10.241.1.71:8080"
+config := marathon.NewDefaultConfig()
+config.URL = marathonURL
+config.HTTPClient = &http.Client{
+    Timeout: (time.Duration(10) * time.Second),
+    Transport: &http.Transport{
+        Dial: (&net.Dialer{
+            Timeout:   10 * time.Second,
+            KeepAlive: 10 * time.Second,
+        }).Dial,
+        TLSClientConfig: &tls.Config{
+            InsecureSkipVerify: true,
+        },
+    },
+}
+```
 
 ### Listing the applications
 
@@ -79,17 +100,22 @@ for _, application := range applications.Apps {
 
 ```Go
 log.Printf("Deploying a new application")
-application := marathon.NewDockerApplication()
-application.Name("/product/name/frontend")
-application.CPU(0.1).Memory(64).Storage(0.0).Count(2)
-application.Arg("/usr/sbin/apache2ctl", "-D", "FOREGROUND")
-application.AddEnv("NAME", "frontend_http")
-application.AddEnv("SERVICE_80_NAME", "test_http")
-application.AddLabel("environment", "staging")
-application.AddLabel("security", "none")
-// add the docker container
-application.Container.Docker.Container("quay.io/gambol99/apache-php:latest").Expose(80, 443)
-application.CheckHTTP("/health", 10, 5)
+application := marathon.NewDockerApplication().
+  Name(applicationName).
+  CPU(0.1).
+  Memory(64).
+  Storage(0.0).
+  Count(2).
+  AddArgs("/usr/sbin/apache2ctl", "-D", "FOREGROUND").
+  AddEnv("NAME", "frontend_http").
+  AddEnv("SERVICE_80_NAME", "test_http").
+  CheckHTTP("/health", 10, 5)
+
+application.
+  Container.Docker.Container("quay.io/gambol99/apache-php:latest").
+  Bridged().
+  Expose(80).
+  Expose(443)
 
 if _, err := client.CreateApplication(application); err != nil {
 	log.Fatalf("Failed to create application: %s, error: %s", application, err)

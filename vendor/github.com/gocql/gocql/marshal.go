@@ -62,7 +62,7 @@ func Marshal(info TypeInfo, value interface{}) ([]byte, error) {
 	}
 
 	switch info.Type() {
-	case TypeVarchar, TypeAscii, TypeBlob:
+	case TypeVarchar, TypeAscii, TypeBlob, TypeText:
 		return marshalVarchar(info, value)
 	case TypeBoolean:
 		return marshalBool(info, value)
@@ -115,7 +115,7 @@ func Unmarshal(info TypeInfo, data []byte, value interface{}) error {
 	}
 
 	switch info.Type() {
-	case TypeVarchar, TypeAscii, TypeBlob:
+	case TypeVarchar, TypeAscii, TypeBlob, TypeText:
 		return unmarshalVarchar(info, data, value)
 	case TypeBoolean:
 		return unmarshalBool(info, data, value)
@@ -401,6 +401,13 @@ func bytesToInt64(data []byte) (ret int64) {
 	return ret
 }
 
+func bytesToUint64(data []byte) (ret uint64) {
+	for i := range data {
+		ret |= uint64(data[i]) << (8 * uint(len(data)-i-1))
+	}
+	return ret
+}
+
 func unmarshalBigInt(info TypeInfo, data []byte, value interface{}) error {
 	return unmarshalIntlike(info, decBigInt(data), data, value)
 }
@@ -410,9 +417,14 @@ func unmarshalInt(info TypeInfo, data []byte, value interface{}) error {
 }
 
 func unmarshalVarint(info TypeInfo, data []byte, value interface{}) error {
-	switch value.(type) {
+	switch v := value.(type) {
 	case *big.Int:
 		return unmarshalIntlike(info, 0, data, value)
+	case *uint64:
+		if len(data) == 9 && data[0] == 0 {
+			*v = bytesToUint64(data[1:])
+			return nil
+		}
 	}
 
 	if len(data) > 8 {
@@ -420,7 +432,7 @@ func unmarshalVarint(info TypeInfo, data []byte, value interface{}) error {
 	}
 
 	int64Val := bytesToInt64(data)
-	if len(data) < 8 && data[0]&0x80 > 0 {
+	if len(data) > 0 && len(data) < 8 && data[0]&0x80 > 0 {
 		int64Val -= (1 << uint(len(data)*8))
 	}
 	return unmarshalIntlike(info, int64Val, data, value)
@@ -917,6 +929,10 @@ func marshalList(info TypeInfo, value interface{}) ([]byte, error) {
 	rv := reflect.ValueOf(value)
 	t := rv.Type()
 	k := t.Kind()
+	if k == reflect.Slice && rv.IsNil() {
+		return nil, nil
+	}
+
 	switch k {
 	case reflect.Slice, reflect.Array:
 		buf := &bytes.Buffer{}
@@ -982,6 +998,9 @@ func unmarshalList(info TypeInfo, data []byte, value interface{}) error {
 			if k == reflect.Array {
 				return unmarshalErrorf("unmarshal list: can not store nil in array value")
 			}
+			if rv.IsNil() {
+				return nil
+			}
 			rv.Set(reflect.Zero(t))
 			return nil
 		}
@@ -1020,6 +1039,10 @@ func marshalMap(info TypeInfo, value interface{}) ([]byte, error) {
 	}
 
 	rv := reflect.ValueOf(value)
+	if rv.IsNil() {
+		return nil, nil
+	}
+
 	t := rv.Type()
 	if t.Kind() != reflect.Map {
 		return nil, marshalErrorf("can not marshal %T into %s", value, info)
@@ -1216,7 +1239,11 @@ func unmarshalInet(info TypeInfo, data []byte, value interface{}) error {
 	case Unmarshaler:
 		return v.UnmarshalCQL(info, data)
 	case *net.IP:
-		ip := net.IP(data)
+		if x := len(data); !(x == 4 || x == 16) {
+			return unmarshalErrorf("cannot unmarshal %s into %T: invalid sized IP: got %d bytes not 4 or 16", info, value, x)
+		}
+		buf := copyBytes(data)
+		ip := net.IP(buf)
 		if v4 := ip.To4(); v4 != nil {
 			*v = v4
 			return nil
@@ -1328,12 +1355,7 @@ func marshalUDT(info TypeInfo, value interface{}) ([]byte, error) {
 				return nil, err
 			}
 
-			if data == nil && typeCanBeNull(e.Type) {
-				buf = appendInt(buf, -1)
-			} else {
-				buf = appendInt(buf, int32(len(data)))
-				buf = append(buf, data...)
-			}
+			buf = appendBytes(buf, data)
 		}
 
 		return buf, nil
@@ -1350,12 +1372,7 @@ func marshalUDT(info TypeInfo, value interface{}) ([]byte, error) {
 				return nil, err
 			}
 
-			if data == nil && typeCanBeNull(e.Type) {
-				buf = appendInt(buf, -1)
-			} else {
-				buf = appendInt(buf, int32(len(data)))
-				buf = append(buf, data...)
-			}
+			buf = appendBytes(buf, data)
 		}
 
 		return buf, nil
@@ -1390,37 +1407,19 @@ func marshalUDT(info TypeInfo, value interface{}) ([]byte, error) {
 			f = k.FieldByName(e.Name)
 		}
 
-		if !f.IsValid() {
-			if _, ok := e.Type.(CollectionType); ok {
-				f = reflect.Zero(goType(e.Type))
-			} else {
-				buf = appendInt(buf, -1)
-				continue
-			}
-		} else if f.Kind() == reflect.Ptr {
-			if f.IsNil() {
-				buf = appendInt(buf, -1)
-				continue
-			} else {
-				f = f.Elem()
+		var data []byte
+		if f.IsValid() && f.CanInterface() {
+			var err error
+			data, err = Marshal(e.Type, f.Interface())
+			if err != nil {
+				return nil, err
 			}
 		}
 
-		data, err := Marshal(e.Type, f.Interface())
-		if err != nil {
-			return nil, err
-		}
-
-		if data == nil && typeCanBeNull(e.Type) {
-			buf = appendInt(buf, -1)
-		} else {
-			buf = appendInt(buf, int32(len(data)))
-			buf = append(buf, data...)
-		}
+		buf = appendBytes(buf, data)
 	}
 
 	return buf, nil
-
 }
 
 func unmarshalUDT(info TypeInfo, data []byte, value interface{}) error {
@@ -1517,6 +1516,11 @@ func unmarshalUDT(info TypeInfo, data []byte, value interface{}) error {
 
 	udt := info.(UDTTypeInfo)
 	for _, e := range udt.Elements {
+		if len(data) < 4 {
+			// UDT def does not match the column value
+			return nil
+		}
+
 		size := readInt(data[:4])
 		data = data[4:]
 
@@ -1528,7 +1532,7 @@ func unmarshalUDT(info TypeInfo, data []byte, value interface{}) error {
 			}
 
 			if !f.IsValid() || !f.CanAddr() {
-				return unmarshalErrorf("cannot unmarshal %s into %T", info, value)
+				return unmarshalErrorf("cannot unmarshal %s into %T: field %v is not valid", info, value, e.Name)
 			}
 
 			fk := f.Addr().Interface()
@@ -1616,6 +1620,10 @@ type TupleTypeInfo struct {
 	Elems []TypeInfo
 }
 
+func (t TupleTypeInfo) New() interface{} {
+	return reflect.New(goType(t)).Interface()
+}
+
 type UDTField struct {
 	Name string
 	Type TypeInfo
@@ -1626,6 +1634,10 @@ type UDTTypeInfo struct {
 	KeySpace string
 	Name     string
 	Elements []UDTField
+}
+
+func (u UDTTypeInfo) New() interface{} {
+	return reflect.New(goType(u)).Interface()
 }
 
 func (u UDTTypeInfo) String() string {
@@ -1663,6 +1675,7 @@ const (
 	TypeDouble    Type = 0x0007
 	TypeFloat     Type = 0x0008
 	TypeInt       Type = 0x0009
+	TypeText      Type = 0x000A
 	TypeTimestamp Type = 0x000B
 	TypeUUID      Type = 0x000C
 	TypeVarchar   Type = 0x000D
@@ -1699,6 +1712,8 @@ func (t Type) String() string {
 		return "float"
 	case TypeInt:
 		return "int"
+	case TypeText:
+		return "text"
 	case TypeTimestamp:
 		return "timestamp"
 	case TypeUUID:
