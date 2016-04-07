@@ -1,0 +1,24 @@
+name: scheduled
+applications:
+  start_with_schedule:
+    type: run-once
+    id: start_with_schedule
+    cpu: 0.1
+    mem: 8
+    launch_command: "echo 'start with schedule'"
+    start_time: "0 30 12 7 4 6"
+    time_schedule: "@every 17s"
+  start_only:
+    type: run-once
+    id: start_only
+    cpu: 0.1
+    mem: 8
+    launch_command: "echo 'start only'"
+    start_time: "0 25 12 7 4 6"
+  schedule_only:
+    type: run-once
+    id: schedule_only
+    cpu: 0.1
+    mem: 8
+    launch_command: "echo 'schedule only'"
+    time_schedule: "@every 30s"
