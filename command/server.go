@@ -26,13 +26,11 @@ import (
 	"io/ioutil"
 	"regexp"
 
-	"github.com/elodina/pyrgus/log"
 	"github.com/elodina/stack-deploy/framework"
 	marathon "github.com/gambol99/go-marathon"
 	"github.com/gocql/gocql"
+	"github.com/yanzay/log"
 )
-
-var Logger = log.NewDefaultLogger()
 
 type ServerCommand struct {
 	runners      map[string]framework.TaskRunner
@@ -60,9 +58,9 @@ func (sc *ServerCommand) Run(args []string) int {
 		proto             = flags.Int("proto", 3, "Cassandra protocol version")
 		connectRetries    = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
 		connectBackoff    = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
-		debug             = flags.Bool("debug", false, "Flag for debug mode")
-		dev               = flags.Bool("dev", false, "Flag for developer mode")
-		variables         = make(vars)
+		// debug             = flags.Bool("debug", false, "Flag for debug mode")
+		dev       = flags.Bool("dev", false, "Flag for developer mode")
+		variables = make(vars)
 	)
 	flags.StringVar(&schedulerConfig.Master, "master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
 	flags.StringVar(&schedulerConfig.User, "framework.user", "", "Mesos user. Defaults to current system user.")
@@ -72,10 +70,6 @@ func (sc *ServerCommand) Run(args []string) int {
 	flags.Var(variables, "var", "Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.")
 
 	flags.Parse(args)
-	if *debug {
-		Logger = log.NewConsoleLogger(log.DebugLevel, log.DefaultLogFormat)
-		framework.Logger = log.NewConsoleLogger(log.DebugLevel, log.DefaultLogFormat)
-	}
 
 	ctrlc := make(chan os.Signal, 1)
 	signal.Notify(ctrlc, os.Interrupt)
@@ -85,13 +79,13 @@ func (sc *ServerCommand) Run(args []string) int {
 
 	marathonClient, err := sc.connectMarathon(*marathonURL, *connectRetries, *connectBackoff)
 	if err != nil {
-		Logger.Critical("%s", err)
+		log.Fatal(err)
 		return 1
 	}
 
 	if *persistentStorage == "" {
 		if !*dev {
-			Logger.Critical("--storage flag is required. Examples: 'file:stack-deploy.json', 'zk:zookeeper.service:2181/stack-deploy'")
+			log.Fatal("--storage flag is required. Examples: 'file:stack-deploy.json', 'zk:zookeeper.service:2181/stack-deploy'")
 			return 1
 		} else {
 			*persistentStorage = "file:stack-deploy.json"
@@ -100,7 +94,7 @@ func (sc *ServerCommand) Run(args []string) int {
 
 	frameworkStorage, err := framework.NewFrameworkStorage(*persistentStorage)
 	if err != nil {
-		Logger.Critical("%s", err)
+		log.Fatal(err)
 		return 1
 	}
 	schedulerConfig.Storage = frameworkStorage
@@ -109,31 +103,31 @@ func (sc *ServerCommand) Run(args []string) int {
 	scheduler := framework.NewScheduler(schedulerConfig)
 	err = scheduler.GetMesosState().Update()
 	if err != nil {
-		Logger.Critical("%s", err)
+		log.Fatal(err)
 		return 1
 	}
 
 	if *bootstrap != "" {
 		var context *framework.StackContext
 		if frameworkStorage.BootstrapContext != nil && len(frameworkStorage.BootstrapContext.All()) > 0 {
-			Logger.Info("Restored bootstrap context from persistent storage")
+			log.Info("Restored bootstrap context from persistent storage")
 			context = frameworkStorage.BootstrapContext
 		} else {
-			Logger.Info("No existing bootstrap context found in persistent storage, bootstrapping")
+			log.Info("No existing bootstrap context found in persistent storage, bootstrapping")
 			var err error
 			context, err = sc.Bootstrap(*bootstrap, marathonClient, scheduler, *connectRetries, *connectBackoff)
 			if err != nil {
-				Logger.Critical("%s", err)
+				log.Fatal(err)
 				return 1
 			}
 		}
 
-		Logger.Info("Bootstrap context: %s", context)
-		Logger.Info("Cassandra connect before resolving: %s", *cassandra)
+		log.Infof("Bootstrap context: %s", context)
+		log.Infof("Cassandra connect before resolving: %s", *cassandra)
 		for k, v := range context.All() {
 			*cassandra = strings.Replace(*cassandra, fmt.Sprintf("{%s}", fmt.Sprint(k)), fmt.Sprint(v), -1)
 		}
-		Logger.Info("Cassandra connect after resolving: %s", *cassandra)
+		log.Infof("Cassandra connect after resolving: %s", *cassandra)
 		frameworkStorage.BootstrapContext = context
 		frameworkStorage.Save()
 	}
@@ -160,7 +154,7 @@ func (sc *ServerCommand) Run(args []string) int {
 			panic(err)
 		}
 	} else {
-		Logger.Warn("Starting in developer mode. DO NOT use this in production!")
+		log.Warning("Starting in developer mode. DO NOT use this in production!")
 		schedulerConfig.FailoverTimeout = time.Duration(0)
 		storage = framework.NewInMemoryStorage()
 		userStorage = new(framework.NoopUserStorage)
@@ -180,7 +174,7 @@ func (sc *ServerCommand) Run(args []string) int {
 func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, scheduler framework.Scheduler, retries int, backoff time.Duration) (*framework.StackContext, error) {
 	stackFileData, err := ioutil.ReadFile(stackFile)
 	if err != nil {
-		Logger.Error("Can't read file %s", stackFile)
+		log.Errorf("Can't read file %s", stackFile)
 		return nil, err
 	}
 
@@ -189,7 +183,7 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 		return nil, err
 	}
 
-	Logger.Debug("Boostrapping with stack: \n%s", string(stackFileData))
+	log.Debugf("Boostrapping with stack: \n%s", string(stackFileData))
 
 	var context *framework.StackContext
 	bootstrapZone := ""
@@ -215,12 +209,12 @@ func (sc *ServerCommand) connectMarathon(url string, retries int, backoff time.D
 	var err error
 	var marathonClient marathon.Marathon
 	for i := 0; i < retries; i++ {
-		Logger.Info("Trying to connect to Marathon: attempt %d", i)
+		log.Infof("Trying to connect to Marathon: attempt %d", i)
 		marathonClient, err = sc.newMarathonClient(url)
 		if err == nil {
 			return marathonClient, nil
 		}
-		Logger.Debug("Error: %s", err)
+		log.Debugf("Error: %s", err)
 		time.Sleep(backoff)
 	}
 	return nil, err
