@@ -1,6 +1,8 @@
 stack-deploy
 ==========
 
+[![Build Status](https://travis-ci.org/elodina/stack-deploy.svg?branch=master)](https://travis-ci.org/elodina/stack-deploy)
+
 [Installation](#installation)
 * [Prerequisites](#prerequisites)
 * [Start the server](#start-the-server)
