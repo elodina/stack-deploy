@@ -1,5 +1,5 @@
 hash: 4ee43d7e3d0f525a3b5d2ad8bbe21c4b4d315a246a9a228e6641e6624925357e
-updated: 2016-04-06T11:35:21.703272848+03:00
+updated: 2016-04-07T15:54:00.863321885+03:00
 imports:
 - name: github.com/armon/go-radix
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
@@ -14,7 +14,7 @@ imports:
 - name: github.com/elodina/go-kafka-avro
   version: dfcc855c4e687de4f776104570ae4daf05b101f5
 - name: github.com/elodina/go-mesos-utils
-  version: 10d38bbe29809e3b27678a7a1239b32e72d81645
+  version: f34f4d54a21ae1c111d618b7aff979cb991879b6
   subpackages:
   - pretty
 - name: github.com/elodina/pyrgus
@@ -45,7 +45,7 @@ imports:
   subpackages:
   - proto
 - name: github.com/golang/snappy
-  version: 857ad66e003f466b64f9055849bab122efd4c87a
+  version: cef980a12b316c5b7e5bb3a8e168eb43ae999a88
 - name: github.com/google/go-querystring
   version: 6bb77fe6f42b85397288d4f6f67ac72f8f400ee7
   subpackages:
@@ -89,7 +89,7 @@ imports:
 - name: github.com/yanzay/log
   version: 935a77dff2b1097ca76ca6a6c6353050fc9effcf
 - name: golang.org/x/net
-  version: af4fee9d05b66edc24197d189e6118f8ebce8c2b
+  version: e45385e9b226f570b1f086bf287b25d3d4117776
   subpackages:
   - context
 - name: golang.org/x/sys

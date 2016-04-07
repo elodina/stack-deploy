@@ -2,19 +2,20 @@ package framework
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/elodina/stack-deploy/constraints"
 	marathon "github.com/gambol99/go-marathon"
+	"github.com/yanzay/log"
 	yaml "gopkg.in/yaml.v2"
-	"io"
-	"strconv"
 )
 
 type ApplicationState int
@@ -58,6 +59,8 @@ type Application struct {
 	Tasks               yaml.MapSlice     `yaml:"tasks,omitempty"`
 	Dependencies        []string          `yaml:"dependencies,omitempty"`
 	Docker              *Docker           `yaml:"docker,omitempty"`
+	StartTime           string            `yaml:"start_time,omitempty"`
+	TimeSchedule        string            `yaml:"time_schedule",omitempty"`
 
 	BeforeScheduler []string `yaml:"before_scheduler,omitempty"`
 	AfterScheduler  []string `yaml:"after_scheduler,omitempty"`
@@ -218,11 +221,20 @@ func (a *Application) runMarathon(context *StackContext, client marathon.Maratho
 }
 
 func (a *Application) runMesos(scheduler Scheduler) error {
-	status := <-scheduler.RunApplication(a)
+	applicationStatuses := scheduler.RunApplication(a)
+	status := <-applicationStatuses
 	if status.Error != nil {
 		return status.Error
 	}
-
+	go func() {
+		for {
+			status = <-applicationStatuses
+			if status.Error != nil {
+				log.Errorf("Application status error: %s", status.Error)
+				return
+			}
+		}
+	}()
 	return nil
 }
 

@@ -25,6 +25,7 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
+	"github.com/yanzay/log"
 	"sync"
 )
 
@@ -89,10 +90,9 @@ func (ctx *RunOnceApplicationContext) StatusUpdate(driver scheduler.SchedulerDri
 
 	hostname := hostnameFromTaskID(status.GetTaskId().GetValue())
 	ctx.updateTaskState(status)
-
 	switch status.GetState() {
 	case mesos.TaskState_TASK_RUNNING:
-		framework.Logger.Debug("Task %s received status update in state %s", status.GetTaskId().GetValue(), status.GetState().String())
+		log.Infof("Task %s received status update in state %s", status.GetTaskId().GetValue(), status.GetState().String())
 	case mesos.TaskState_TASK_LOST, mesos.TaskState_TASK_FAILED, mesos.TaskState_TASK_ERROR:
 		//TODO also kill all other running tasks sometime?
 		ctx.StatusChan <- framework.NewApplicationRunStatus(ctx.Application, fmt.Errorf("Application %s failed to run on host %s with status %s: %s", ctx.Application.ID, hostname, status.GetState().String(), status.GetMessage()))
@@ -103,7 +103,7 @@ func (ctx *RunOnceApplicationContext) StatusUpdate(driver scheduler.SchedulerDri
 			return true
 		}
 	default:
-		framework.Logger.Warn("Got unexpected task state %s", pretty.Status(status))
+		log.Warningf("Got unexpected task state %s", pretty.Status(status))
 	}
 
 	return false
