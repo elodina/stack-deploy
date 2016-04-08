@@ -10,3 +10,6 @@ install:
 
 script:
   - GO15VENDOREXPERIMENT=1 go test -v $(go list ./... | grep -v /vendor/)
+
+notifications:
+  slack: elodinadevelopment:dOtgSeIeCZlFvHalrpS6AKhy
