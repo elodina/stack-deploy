@@ -2,10 +2,12 @@ package framework
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,8 +15,6 @@ import (
 	"github.com/elodina/stack-deploy/constraints"
 	marathon "github.com/gambol99/go-marathon"
 	yaml "gopkg.in/yaml.v2"
-	"io"
-	"strconv"
 )
 
 type ApplicationState int
@@ -58,6 +58,8 @@ type Application struct {
 	Tasks               yaml.MapSlice     `yaml:"tasks,omitempty"`
 	Dependencies        []string          `yaml:"dependencies,omitempty"`
 	Docker              *Docker           `yaml:"docker,omitempty"`
+	StartTime           string            `yaml:"start_time,omitempty"`
+	TimeSchedule        string            `yaml:"time_schedule",omitempty"`
 
 	BeforeScheduler []string `yaml:"before_scheduler,omitempty"`
 	AfterScheduler  []string `yaml:"after_scheduler,omitempty"`
@@ -222,7 +224,6 @@ func (a *Application) runMesos(scheduler Scheduler) error {
 	if status.Error != nil {
 		return status.Error
 	}
-
 	return nil
 }
 

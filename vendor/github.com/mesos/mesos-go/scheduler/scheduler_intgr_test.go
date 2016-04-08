@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package scheduler_test
+package scheduler
 
 import (
 	"io/ioutil"
@@ -33,8 +33,6 @@ import (
 	"github.com/mesos/mesos-go/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-
-	. "github.com/mesos/mesos-go/scheduler"
 )
 
 // testScuduler is used for testing Schduler callbacks.
@@ -139,7 +137,7 @@ type mockServerConfigurator func(frameworkId *mesos.FrameworkID, suite *Schedule
 type SchedulerIntegrationTestSuiteCore struct {
 	SchedulerTestSuiteCore
 	server                *testutil.MockMesosHttpServer
-	driver                *TestDriver
+	driver                *MesosSchedulerDriver
 	sched                 *testScheduler
 	config                mockServerConfigurator
 	validator             http.HandlerFunc
@@ -176,7 +174,7 @@ func (suite *SchedulerIntegrationTestSuite) configure(frameworkId *mesos.Framewo
 		Framework: suite.framework,
 		Master:    suite.server.Addr,
 	}
-	suite.driver = newTestDriver(suite.T(), cfg)
+	suite.driver = newTestSchedulerDriver(suite.T(), cfg).MesosSchedulerDriver
 	suite.config(frameworkId, suite)
 
 	stat, err := suite.driver.Start()
@@ -212,7 +210,9 @@ var defaultMockServerConfigurator = mockServerConfigurator(func(frameworkId *mes
 			rsp.WriteHeader(http.StatusAccepted)
 		}
 		// this is what the mocked scheduler is expecting to receive
-		suite.driver.FrameworkRegistered(suite.driver.Context(), suite.driver.MasterPID(), &mesos.FrameworkRegisteredMessage{
+		suite.driver.eventLock.Lock()
+		defer suite.driver.eventLock.Unlock()
+		suite.driver.frameworkRegistered(suite.driver.masterPid, &mesos.FrameworkRegisteredMessage{
 			FrameworkId: frameworkId,
 			MasterInfo:  masterInfo,
 		})
@@ -226,7 +226,9 @@ var defaultMockServerConfigurator = mockServerConfigurator(func(frameworkId *mes
 			rsp.WriteHeader(http.StatusAccepted)
 		}
 		// this is what the mocked scheduler is expecting to receive
-		suite.driver.FrameworkReregistered(suite.driver.Context(), suite.driver.MasterPID(), &mesos.FrameworkReregisteredMessage{
+		suite.driver.eventLock.Lock()
+		defer suite.driver.eventLock.Unlock()
+		suite.driver.frameworkReregistered(suite.driver.masterPid, &mesos.FrameworkReregisteredMessage{
 			FrameworkId: frameworkId,
 			MasterInfo:  masterInfo,
 		})
@@ -251,7 +253,7 @@ func (s *SchedulerIntegrationTestSuite) TearDownTest() {
 
 		// wait for all events to finish processing, otherwise we can get into a data
 		// race when the suite object is reused for the next test.
-		<-s.driver.Done()
+		<-s.driver.done
 	}
 }
 
@@ -334,7 +336,7 @@ func (suite *SchedulerIntegrationTestSuite) TestSchedulerDriverResourceOffersEve
 	}
 
 	c := suite.newMockClient()
-	c.SendMessage(suite.driver.UPID(), pbMsg)
+	c.SendMessage(suite.driver.self, pbMsg)
 	suite.sched.waitForCallback(0)
 }
 
@@ -348,7 +350,7 @@ func (suite *SchedulerIntegrationTestSuite) TestSchedulerDriverRescindOfferEvent
 	}
 
 	c := suite.newMockClient()
-	c.SendMessage(suite.driver.UPID(), pbMsg)
+	c.SendMessage(suite.driver.self, pbMsg)
 	suite.sched.waitForCallback(0)
 }
 
@@ -386,7 +388,7 @@ func (suite *SchedulerIntegrationTestSuite) TestSchedulerDriverStatusUpdatedEven
 	pbMsg.Update.SlaveId = &mesos.SlaveID{Value: proto.String("test-slave-001")}
 
 	c := suite.newMockClient()
-	c.SendMessage(suite.driver.UPID(), pbMsg)
+	c.SendMessage(suite.driver.self, pbMsg)
 	wg.Wait()
 }
 
@@ -400,7 +402,7 @@ func (suite *SchedulerIntegrationTestSuite) TestSchedulerDriverLostSlaveEvent() 
 	}
 
 	c := suite.newMockClient()
-	c.SendMessage(suite.driver.UPID(), pbMsg)
+	c.SendMessage(suite.driver.self, pbMsg)
 	suite.sched.waitForCallback(0)
 }
 
@@ -417,11 +419,11 @@ func (suite *SchedulerIntegrationTestSuite) TestSchedulerDriverFrameworkMessageE
 	}
 
 	c := suite.newMockClient()
-	c.SendMessage(suite.driver.UPID(), pbMsg)
+	c.SendMessage(suite.driver.self, pbMsg)
 	suite.sched.waitForCallback(0)
 }
 
-func waitForConnected(t *testing.T, driver *TestDriver, timeout time.Duration) bool {
+func waitForConnected(t *testing.T, driver *MesosSchedulerDriver, timeout time.Duration) bool {
 	connected := make(chan struct{})
 	go func() {
 		defer close(connected)
@@ -448,7 +450,7 @@ func (suite *SchedulerIntegrationTestSuite) TestSchedulerDriverFrameworkErrorEve
 	}
 
 	c := suite.newMockClient()
-	c.SendMessage(suite.driver.UPID(), pbMsg)
+	c.SendMessage(suite.driver.self, pbMsg)
 	message := <-suite.sched.errors
 	suite.Equal("test-error-999", message)
 	suite.sched.waitForCallback(10 * time.Second)

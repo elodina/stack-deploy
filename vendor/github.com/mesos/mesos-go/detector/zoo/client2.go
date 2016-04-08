@@ -9,7 +9,7 @@ import (
 
 const (
 	defaultSessionTimeout = 60 * time.Second
-	CurrentPath           = "."
+	currentPath           = "."
 )
 
 var zkSessionTimeout = defaultSessionTimeout
@@ -43,25 +43,25 @@ func connect2(hosts []string, path string) (*client2, error) {
 	}, nil
 }
 
-func (c *client2) Stopped() <-chan struct{} {
+func (c *client2) stopped() <-chan struct{} {
 	return c.done
 }
 
-func (c *client2) Stop() {
+func (c *client2) stop() {
 	c.stopOnce.Do(c.Close)
 }
 
-func (c *client2) Data(path string) (data []byte, err error) {
+func (c *client2) data(path string) (data []byte, err error) {
 	data, _, err = c.Get(path)
 	return
 }
 
-func (c *client2) WatchChildren(path string) (string, <-chan []string, <-chan error) {
+func (c *client2) watchChildren(path string) (string, <-chan []string, <-chan error) {
 	errCh := make(chan error, 1)
 	snap := make(chan []string)
 
 	watchPath := c.path
-	if path != "" && path != CurrentPath {
+	if path != "" && path != currentPath {
 		watchPath = watchPath + path
 	}
 	go func() {

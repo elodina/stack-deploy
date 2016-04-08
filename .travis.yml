@@ -7,8 +7,9 @@ go:
 
 install:
   - go get -u github.com/smartystreets/goconvey
-  - go get -u github.com/Masterminds/glide
-  - glide install
 
 script:
   - GO15VENDOREXPERIMENT=1 go test -v $(go list ./... | grep -v /vendor/)
+
+notifications:
+  slack: elodinadevelopment:dOtgSeIeCZlFvHalrpS6AKhy

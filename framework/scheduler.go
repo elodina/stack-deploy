@@ -24,6 +24,7 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
+	"github.com/robfig/cron"
 	"strings"
 	"time"
 )
@@ -55,12 +56,14 @@ type StackDeployScheduler struct {
 	*SchedulerConfig
 	driver scheduler.SchedulerDriver
 	state  MesosState
+	Cron   *cron.Cron
 }
 
 func NewScheduler(config *SchedulerConfig) *StackDeployScheduler {
 	return &StackDeployScheduler{
 		SchedulerConfig: config,
 		state:           NewMesosClusterState(config.Master),
+		Cron:            cron.New(),
 	}
 }
 
@@ -95,6 +98,17 @@ func (s *StackDeployScheduler) Start() error {
 		if stat, err := driver.Run(); err != nil {
 			Logger.Info("Framework stopped with status %s and error: %s", stat.String(), err)
 			panic(err)
+		}
+	}()
+
+	s.Cron.Start()
+	go func() {
+		for {
+			Logger.Info("Cron entries: %v\n", s.Cron.Entries())
+			for _, entry := range s.Cron.Entries() {
+				Logger.Info("Entry: %v, %v, %v, %v", entry.Prev, entry.Next, entry.Schedule, entry.Job)
+			}
+			time.Sleep(10 * time.Second)
 		}
 	}()
 
@@ -140,6 +154,10 @@ func (s *StackDeployScheduler) OfferRescinded(driver scheduler.SchedulerDriver, 
 func (s *StackDeployScheduler) StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) {
 	Logger.Info("[StatusUpdate] %s", pretty.Status(status))
 
+	if status.GetState() == mesos.TaskState_TASK_FINISHED {
+		driver.ReviveOffers()
+	}
+
 	for _, runner := range MesosTaskRunners {
 		if runner.StatusUpdate(driver, status) {
 			return
@@ -180,6 +198,10 @@ func (s *StackDeployScheduler) RunApplication(application *Application) <-chan *
 			statusChan <- NewApplicationRunStatus(application, errors.New("Application already exists"))
 		}()
 		return statusChan
+	}
+
+	if application.TimeSchedule != "" || application.StartTime != "" {
+		return runner.ScheduleApplication(application, s.GetMesosState(), s.Cron)
 	}
 
 	return runner.StageApplication(application, s.GetMesosState())

@@ -7,9 +7,15 @@ Package mesosproto is a generated protocol buffer package.
 
 It is generated from these files:
 	authentication.proto
+	authorizer.proto
+	containerizer.proto
 	internal.proto
+	log.proto
 	mesos.proto
 	messages.proto
+	registry.proto
+	scheduler.proto
+	state.proto
 
 It has these top-level messages:
 	AuthenticateMessage
@@ -19,23 +25,37 @@ It has these top-level messages:
 	AuthenticationCompletedMessage
 	AuthenticationFailedMessage
 	AuthenticationErrorMessage
+	ACL
+	ACLs
+	Launch
+	Update
+	Wait
+	Destroy
+	Usage
+	Termination
+	Containers
 	InternalMasterChangeDetected
 	InternalTryAuthentication
 	InternalAuthenticationResult
-	InternalNetworkError
+	Promise
+	Action
+	Metadata
+	Record
+	PromiseRequest
+	PromiseResponse
+	WriteRequest
+	WriteResponse
+	LearnedMessage
+	RecoverRequest
+	RecoverResponse
 	FrameworkID
 	OfferID
 	SlaveID
 	TaskID
 	ExecutorID
 	ContainerID
-	TimeInfo
-	DurationInfo
 	Address
 	URL
-	Unavailability
-	MachineID
-	MachineInfo
 	FrameworkInfo
 	HealthCheck
 	CommandInfo
@@ -51,7 +71,6 @@ It has these top-level messages:
 	PerfStatistics
 	Request
 	Offer
-	InverseOffer
 	TaskInfo
 	TaskStatus
 	Filters
@@ -64,9 +83,7 @@ It has these top-level messages:
 	RateLimits
 	Image
 	Volume
-	NetworkInfo
 	ContainerInfo
-	ContainerStatus
 	Labels
 	Label
 	Port
@@ -121,6 +138,11 @@ It has these top-level messages:
 	Archive
 	TaskHealthStatus
 	HookExecuted
+	Registry
+	Event
+	Call
+	Entry
+	Operation
 */
 package mesosproto
 
@@ -1372,12 +1394,8 @@ func (m *AuthenticateMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1390,12 +1408,6 @@ func (m *AuthenticateMessage) Unmarshal(data []byte) error {
 		}
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticateMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticateMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
@@ -1403,9 +1415,6 @@ func (m *AuthenticateMessage) Unmarshal(data []byte) error {
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
@@ -1429,7 +1438,15 @@ func (m *AuthenticateMessage) Unmarshal(data []byte) error {
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1448,21 +1465,14 @@ func (m *AuthenticateMessage) Unmarshal(data []byte) error {
 		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("pid")
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func (m *AuthenticationMechanismsMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1475,12 +1485,6 @@ func (m *AuthenticationMechanismsMessage) Unmarshal(data []byte) error {
 		}
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticationMechanismsMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticationMechanismsMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
@@ -1488,9 +1492,6 @@ func (m *AuthenticationMechanismsMessage) Unmarshal(data []byte) error {
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
@@ -1512,7 +1513,15 @@ func (m *AuthenticationMechanismsMessage) Unmarshal(data []byte) error {
 			m.Mechanisms = append(m.Mechanisms, string(data[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1528,9 +1537,6 @@ func (m *AuthenticationMechanismsMessage) Unmarshal(data []byte) error {
 		}
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
@@ -1538,12 +1544,8 @@ func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1556,12 +1558,6 @@ func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
 		}
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticationStartMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticationStartMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
@@ -1569,9 +1565,6 @@ func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
@@ -1600,9 +1593,6 @@ func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
@@ -1623,7 +1613,15 @@ func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
 			m.Data = append([]byte{}, data[iNdEx:postIndex]...)
 			iNdEx = postIndex
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1642,9 +1640,6 @@ func (m *AuthenticationStartMessage) Unmarshal(data []byte) error {
 		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("mechanism")
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func (m *AuthenticationStepMessage) Unmarshal(data []byte) error {
@@ -1652,12 +1647,8 @@ func (m *AuthenticationStepMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1670,12 +1661,6 @@ func (m *AuthenticationStepMessage) Unmarshal(data []byte) error {
 		}
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticationStepMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticationStepMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
@@ -1683,9 +1668,6 @@ func (m *AuthenticationStepMessage) Unmarshal(data []byte) error {
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
@@ -1707,7 +1689,15 @@ func (m *AuthenticationStepMessage) Unmarshal(data []byte) error {
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1726,21 +1716,14 @@ func (m *AuthenticationStepMessage) Unmarshal(data []byte) error {
 		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("data")
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func (m *AuthenticationCompletedMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1752,16 +1735,17 @@ func (m *AuthenticationCompletedMessage) Unmarshal(data []byte) error {
 			}
 		}
 		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticationCompletedMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticationCompletedMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1777,21 +1761,14 @@ func (m *AuthenticationCompletedMessage) Unmarshal(data []byte) error {
 		}
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func (m *AuthenticationFailedMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1803,16 +1780,17 @@ func (m *AuthenticationFailedMessage) Unmarshal(data []byte) error {
 			}
 		}
 		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticationFailedMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticationFailedMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1828,21 +1806,14 @@ func (m *AuthenticationFailedMessage) Unmarshal(data []byte) error {
 		}
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func (m *AuthenticationErrorMessage) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
-		preIndex := iNdEx
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1855,12 +1826,6 @@ func (m *AuthenticationErrorMessage) Unmarshal(data []byte) error {
 		}
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AuthenticationErrorMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthenticationErrorMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
@@ -1868,9 +1833,6 @@ func (m *AuthenticationErrorMessage) Unmarshal(data []byte) error {
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
@@ -1893,7 +1855,15 @@ func (m *AuthenticationErrorMessage) Unmarshal(data []byte) error {
 			m.Error = &s
 			iNdEx = postIndex
 		default:
-			iNdEx = preIndex
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
 			skippy, err := skipAuthentication(data[iNdEx:])
 			if err != nil {
 				return err
@@ -1909,9 +1879,6 @@ func (m *AuthenticationErrorMessage) Unmarshal(data []byte) error {
 		}
 	}
 
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
 	return nil
 }
 func skipAuthentication(data []byte) (n int, err error) {
@@ -1920,9 +1887,6 @@ func skipAuthentication(data []byte) (n int, err error) {
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return 0, ErrIntOverflowAuthentication
-			}
 			if iNdEx >= l {
 				return 0, io.ErrUnexpectedEOF
 			}
@@ -1936,10 +1900,7 @@ func skipAuthentication(data []byte) (n int, err error) {
 		wireType := int(wire & 0x7)
 		switch wireType {
 		case 0:
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return 0, ErrIntOverflowAuthentication
-				}
+			for {
 				if iNdEx >= l {
 					return 0, io.ErrUnexpectedEOF
 				}
@@ -1955,9 +1916,6 @@ func skipAuthentication(data []byte) (n int, err error) {
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return 0, ErrIntOverflowAuthentication
-				}
 				if iNdEx >= l {
 					return 0, io.ErrUnexpectedEOF
 				}
@@ -1978,9 +1936,6 @@ func skipAuthentication(data []byte) (n int, err error) {
 				var innerWire uint64
 				var start int = iNdEx
 				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return 0, ErrIntOverflowAuthentication
-					}
 					if iNdEx >= l {
 						return 0, io.ErrUnexpectedEOF
 					}
@@ -2016,5 +1971,4 @@ func skipAuthentication(data []byte) (n int, err error) {
 
 var (
 	ErrInvalidLengthAuthentication = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowAuthentication   = fmt.Errorf("proto: integer overflow")
 )

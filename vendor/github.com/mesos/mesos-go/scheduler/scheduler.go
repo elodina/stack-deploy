@@ -34,25 +34,22 @@ import (
 	"github.com/mesos/mesos-go/auth"
 	"github.com/mesos/mesos-go/detector"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	"github.com/mesos/mesos-go/mesosproto/scheduler"
 	util "github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/mesosutil/process"
 	"github.com/mesos/mesos-go/messenger"
-	"github.com/mesos/mesos-go/messenger/sessionid"
 	"github.com/mesos/mesos-go/upid"
 	"github.com/pborman/uuid"
 	"golang.org/x/net/context"
 )
 
 const (
-	defaultAuthenticationTimeout = 30 * time.Second // timeout interval for an authentication attempt
+	authTimeout                  = 5 * time.Second // timeout interval for an authentication attempt
 	registrationRetryIntervalMax = float64(1 * time.Minute)
 	registrationBackoffFactor    = 2 * time.Second
 )
 
 var (
-	ErrDisconnected           = errors.New("disconnected from mesos master")
-	errAuthenticationCanceled = errors.New("authentication canceled")
+	authenticationCanceledError = errors.New("authentication canceled")
 )
 
 type ErrDriverAborted struct {
@@ -149,7 +146,7 @@ type MesosSchedulerDriver struct {
 	dispatch        func(context.Context, *upid.UPID, proto.Message) error // send a message somewhere
 	started         chan struct{}                                          // signal chan that closes upon a successful call to Start()
 	eventLock       sync.RWMutex                                           // guard for all driver state
-	withScheduler   func(f func(s Scheduler))                              // execute some func with respect to the given scheduler; should be the last thing invoked in a handler (lock semantics)
+	withScheduler   func(f func(s Scheduler))                              // execute some func with respect to the given scheduler
 	done            chan struct{}                                          // signal chan that closes when no more events will be processed
 }
 
@@ -321,27 +318,17 @@ func (driver *MesosSchedulerDriver) makeWithScheduler(cs Scheduler) func(func(Sc
 	}
 }
 
-// ctx returns the current context.Context for the driver, expects to be invoked
-// only when eventLock is locked.
-func (driver *MesosSchedulerDriver) context() context.Context {
-	// set a "session" attribute so that the messenger can see it
-	// and use it for reporting delivery errors.
-	return sessionid.NewContext(context.TODO(), driver.connection.String())
-}
-
 // init initializes the driver.
 func (driver *MesosSchedulerDriver) init() error {
 	log.Infof("Initializing mesos scheduler driver\n")
 	driver.dispatch = driver.messenger.Send
 
 	// serialize all callbacks from the messenger
-	type messageHandler func(context.Context, *upid.UPID, proto.Message)
-
-	guarded := func(h messageHandler) messenger.MessageHandler {
+	guarded := func(h messenger.MessageHandler) messenger.MessageHandler {
 		return messenger.MessageHandler(func(from *upid.UPID, msg proto.Message) {
 			driver.eventLock.Lock()
 			defer driver.eventLock.Unlock()
-			h(driver.context(), from, msg)
+			h(from, msg)
 		})
 	}
 
@@ -357,41 +344,11 @@ func (driver *MesosSchedulerDriver) init() error {
 	driver.messenger.Install(guarded(driver.exitedExecutor), &mesos.ExitedExecutorMessage{})
 	driver.messenger.Install(guarded(driver.handleMasterChanged), &mesos.InternalMasterChangeDetected{})
 	driver.messenger.Install(guarded(driver.handleAuthenticationResult), &mesos.InternalAuthenticationResult{})
-	driver.messenger.Install(guarded(driver.handleNetworkError), &mesos.InternalNetworkError{})
 	return nil
 }
 
-func (driver *MesosSchedulerDriver) handleNetworkError(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
-	msg := pbMsg.(*mesos.InternalNetworkError)
-
-	if driver.status == mesos.Status_DRIVER_ABORTED {
-		log.Info("ignoring network error because the driver is aborted.")
-		return
-	} else if !from.Equal(driver.self) {
-		log.Errorf("ignoring network error because message received from upid '%v'", from)
-		return
-	} else if !driver.connected {
-		log.V(1).Infof("ignoring network error since we're not currently connected")
-		return
-	}
-
-	if driver.masterPid.String() == msg.GetPid() && driver.connection.String() == msg.GetSession() {
-		// fire a disconnection event
-		log.V(3).Info("Disconnecting scheduler.")
-
-		// need to set all 3 of these at once, since withScheduler() temporarily releases the lock and we don't
-		// want inconsistent connection facts
-		driver.masterPid = nil
-		driver.connected = false
-		driver.authenticated = false
-
-		driver.withScheduler(func(s Scheduler) { s.Disconnected(driver) })
-		log.Info("master disconnected")
-	}
-}
-
 // lead master detection callback.
-func (driver *MesosSchedulerDriver) handleMasterChanged(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) handleMasterChanged(from *upid.UPID, pbMsg proto.Message) {
 	if driver.status == mesos.Status_DRIVER_ABORTED {
 		log.Info("Ignoring master change because the driver is aborted.")
 		return
@@ -401,19 +358,17 @@ func (driver *MesosSchedulerDriver) handleMasterChanged(_ context.Context, from 
 	}
 
 	// Reconnect every time a master is detected.
-	wasConnected := driver.connected
-	driver.connected = false
-	driver.authenticated = false
-
-	alertScheduler := false
-	if wasConnected {
+	if driver.connected {
 		log.V(3).Info("Disconnecting scheduler.")
 		driver.masterPid = nil
-		alertScheduler = true
+		driver.withScheduler(func(s Scheduler) { s.Disconnected(driver) })
 	}
 
 	msg := pbMsg.(*mesos.InternalMasterChangeDetected)
 	master := msg.Master
+
+	driver.connected = false
+	driver.authenticated = false
 
 	if master != nil {
 		log.Infof("New master %s detected\n", master.GetPid())
@@ -424,12 +379,9 @@ func (driver *MesosSchedulerDriver) handleMasterChanged(_ context.Context, from 
 		}
 
 		driver.masterPid = pid // save for downstream ops.
-		defer driver.tryAuthentication()
+		driver.tryAuthentication()
 	} else {
 		log.Infoln("No master detected.")
-	}
-	if alertScheduler {
-		driver.withScheduler(func(s Scheduler) { s.Disconnected(driver) })
 	}
 }
 
@@ -486,7 +438,7 @@ func (driver *MesosSchedulerDriver) tryAuthentication() {
 	}
 }
 
-func (driver *MesosSchedulerDriver) handleAuthenticationResult(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) handleAuthenticationResult(from *upid.UPID, pbMsg proto.Message) {
 	if driver.status != mesos.Status_DRIVER_RUNNING {
 		log.V(1).Info("ignoring authenticate because driver is not running")
 		return
@@ -553,7 +505,7 @@ func (driver *MesosSchedulerDriver) stopped() bool {
 }
 
 // ---------------------- Handlers for Events from Master --------------- //
-func (driver *MesosSchedulerDriver) frameworkRegistered(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) frameworkRegistered(from *upid.UPID, pbMsg proto.Message) {
 	log.V(2).Infoln("Handling scheduler driver framework registered event.")
 
 	msg := pbMsg.(*mesos.FrameworkRegisteredMessage)
@@ -589,7 +541,7 @@ func (driver *MesosSchedulerDriver) frameworkRegistered(_ context.Context, from 
 	driver.withScheduler(func(s Scheduler) { s.Registered(driver, frameworkId, masterInfo) })
 }
 
-func (driver *MesosSchedulerDriver) frameworkReregistered(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) frameworkReregistered(from *upid.UPID, pbMsg proto.Message) {
 	log.V(1).Infoln("Handling Scheduler re-registered event.")
 	msg := pbMsg.(*mesos.FrameworkReregisteredMessage)
 
@@ -613,9 +565,10 @@ func (driver *MesosSchedulerDriver) frameworkReregistered(_ context.Context, fro
 	driver.connection = uuid.NewUUID()
 
 	driver.withScheduler(func(s Scheduler) { s.Reregistered(driver, msg.GetMasterInfo()) })
+
 }
 
-func (driver *MesosSchedulerDriver) resourcesOffered(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) resourcesOffered(from *upid.UPID, pbMsg proto.Message) {
 	log.V(2).Infoln("Handling resource offers.")
 
 	msg := pbMsg.(*mesos.ResourceOffersMessage)
@@ -647,7 +600,7 @@ func (driver *MesosSchedulerDriver) resourcesOffered(_ context.Context, from *up
 	driver.withScheduler(func(s Scheduler) { s.ResourceOffers(driver, msg.Offers) })
 }
 
-func (driver *MesosSchedulerDriver) resourceOfferRescinded(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) resourceOfferRescinded(from *upid.UPID, pbMsg proto.Message) {
 	log.V(1).Infoln("Handling resource offer rescinded.")
 
 	msg := pbMsg.(*mesos.RescindResourceOfferMessage)
@@ -669,7 +622,11 @@ func (driver *MesosSchedulerDriver) resourceOfferRescinded(_ context.Context, fr
 	driver.withScheduler(func(s Scheduler) { s.OfferRescinded(driver, msg.OfferId) })
 }
 
-func (driver *MesosSchedulerDriver) send(ctx context.Context, upid *upid.UPID, msg proto.Message) error {
+func (driver *MesosSchedulerDriver) send(upid *upid.UPID, msg proto.Message) error {
+	//TODO(jdef) should implement timeout here
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
 	c := make(chan error, 1)
 	go func() { c <- driver.dispatch(ctx, upid, msg) }()
 
@@ -683,7 +640,7 @@ func (driver *MesosSchedulerDriver) send(ctx context.Context, upid *upid.UPID, m
 }
 
 // statusUpdated expects to be guarded by eventLock
-func (driver *MesosSchedulerDriver) statusUpdated(ctx context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) statusUpdated(from *upid.UPID, pbMsg proto.Message) {
 	msg := pbMsg.(*mesos.StatusUpdateMessage)
 
 	if driver.status != mesos.Status_DRIVER_RUNNING {
@@ -721,33 +678,35 @@ func (driver *MesosSchedulerDriver) statusUpdated(ctx context.Context, from *upi
 		status.Uuid = msg.Update.Uuid
 	}
 
+	driver.withScheduler(func(s Scheduler) { s.StatusUpdate(driver, status) })
+
 	if driver.status == mesos.Status_DRIVER_ABORTED {
 		log.V(1).Infoln("Not sending StatusUpdate ACK, the driver is aborted!")
-	} else {
-
-		// Send StatusUpdate Acknowledgement; see above for the rules.
-		// Only send ACK if udpate was not from this driver and spec'd a UUID; this is compat w/ 0.23+
-		ackRequired := len(msg.Update.Uuid) > 0 && !from.Equal(driver.self) && msg.GetPid() != driver.self.String()
-		if ackRequired {
-			ackMsg := &mesos.StatusUpdateAcknowledgementMessage{
-				SlaveId:     msg.Update.SlaveId,
-				FrameworkId: driver.frameworkInfo.Id,
-				TaskId:      msg.Update.Status.TaskId,
-				Uuid:        msg.Update.Uuid,
-			}
-
-			log.V(2).Infof("Sending ACK for status update %+v to %q", *msg.Update, from.String())
-			if err := driver.send(ctx, driver.masterPid, ackMsg); err != nil {
-				log.Errorf("Failed to send StatusUpdate ACK message: %v", err)
-			}
-		} else {
-			log.V(2).Infof("Not sending ACK, update is not from slave %q", from.String())
-		}
+		return
 	}
-	driver.withScheduler(func(s Scheduler) { s.StatusUpdate(driver, status) })
+
+	// Send StatusUpdate Acknowledgement; see above for the rules.
+	// Only send ACK if udpate was not from this driver and spec'd a UUID; this is compat w/ 0.23+
+	ackRequired := len(msg.Update.Uuid) > 0 && !from.Equal(driver.self) && msg.GetPid() != driver.self.String()
+	if ackRequired {
+		ackMsg := &mesos.StatusUpdateAcknowledgementMessage{
+			SlaveId:     msg.Update.SlaveId,
+			FrameworkId: driver.frameworkInfo.Id,
+			TaskId:      msg.Update.Status.TaskId,
+			Uuid:        msg.Update.Uuid,
+		}
+
+		log.V(2).Infof("Sending ACK for status update %+v to %q", *msg.Update, from.String())
+		if err := driver.send(driver.masterPid, ackMsg); err != nil {
+			log.Errorf("Failed to send StatusUpdate ACK message: %v", err)
+			return
+		}
+	} else {
+		log.V(2).Infof("Not sending ACK, update is not from slave %q", from.String())
+	}
 }
 
-func (driver *MesosSchedulerDriver) exitedExecutor(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) exitedExecutor(from *upid.UPID, pbMsg proto.Message) {
 	log.V(1).Infoln("Handling ExitedExceutor event.")
 	msg := pbMsg.(*mesos.ExitedExecutorMessage)
 
@@ -768,7 +727,7 @@ func (driver *MesosSchedulerDriver) exitedExecutor(_ context.Context, from *upid
 	driver.withScheduler(func(s Scheduler) { s.ExecutorLost(driver, msg.GetExecutorId(), msg.GetSlaveId(), int(status)) })
 }
 
-func (driver *MesosSchedulerDriver) slaveLost(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) slaveLost(from *upid.UPID, pbMsg proto.Message) {
 	log.V(1).Infoln("Handling LostSlave event.")
 
 	msg := pbMsg.(*mesos.LostSlaveMessage)
@@ -791,7 +750,7 @@ func (driver *MesosSchedulerDriver) slaveLost(_ context.Context, from *upid.UPID
 	driver.withScheduler(func(s Scheduler) { s.SlaveLost(driver, msg.SlaveId) })
 }
 
-func (driver *MesosSchedulerDriver) frameworkMessageRcvd(_ context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) frameworkMessageRcvd(from *upid.UPID, pbMsg proto.Message) {
 	log.V(1).Infoln("Handling framework message event.")
 
 	msg := pbMsg.(*mesos.ExecutorToFrameworkMessage)
@@ -806,10 +765,10 @@ func (driver *MesosSchedulerDriver) frameworkMessageRcvd(_ context.Context, from
 	driver.withScheduler(func(s Scheduler) { s.FrameworkMessage(driver, msg.ExecutorId, msg.SlaveId, string(msg.Data)) })
 }
 
-func (driver *MesosSchedulerDriver) frameworkErrorRcvd(ctx context.Context, from *upid.UPID, pbMsg proto.Message) {
+func (driver *MesosSchedulerDriver) frameworkErrorRcvd(from *upid.UPID, pbMsg proto.Message) {
 	log.V(1).Infoln("Handling framework error event.")
 	msg := pbMsg.(*mesos.FrameworkErrorMessage)
-	driver.fatal(ctx, msg.GetMessage())
+	driver.error(msg.GetMessage())
 }
 
 // ---------------------- Interface Methods ---------------------- //
@@ -868,7 +827,7 @@ func (driver *MesosSchedulerDriver) start() (mesos.Status, error) {
 
 // authenticate against the spec'd master pid using the configured authenticationProvider.
 // the authentication process is canceled upon either cancelation of authenticating, or
-// else because it timed out (see defaultAuthenticationTimeout, auth.Timeout).
+// else because it timed out (authTimeout).
 //
 // TODO(jdef) perhaps at some point in the future this will get pushed down into
 // the messenger layer (e.g. to use HTTP-based authentication). We'd probably still
@@ -877,28 +836,17 @@ func (driver *MesosSchedulerDriver) start() (mesos.Status, error) {
 //
 func (driver *MesosSchedulerDriver) authenticate(pid *upid.UPID, authenticating *authenticationAttempt) error {
 	log.Infof("authenticating with master %v", pid)
-
-	var (
-		authTimeout = defaultAuthenticationTimeout
-		ctx         = driver.withAuthContext(context.TODO())
-		handler     = &CredentialHandler{
-			pid:        pid,
-			client:     driver.self,
-			credential: driver.credential,
-		}
-	)
-
-	// check for authentication timeout override
-	if d, ok := auth.TimeoutFrom(ctx); ok {
-		authTimeout = d
+	ctx, cancel := context.WithTimeout(context.Background(), authTimeout)
+	handler := &CredentialHandler{
+		pid:        pid,
+		client:     driver.self,
+		credential: driver.credential,
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, authTimeout)
+	ctx = driver.withAuthContext(ctx)
 	ctx = auth.WithParentUPID(ctx, *driver.self)
 
 	ch := make(chan error, 1)
 	go func() { ch <- auth.Login(ctx, handler) }()
-
 	select {
 	case <-ctx.Done():
 		<-ch
@@ -906,7 +854,7 @@ func (driver *MesosSchedulerDriver) authenticate(pid *upid.UPID, authenticating 
 	case <-authenticating.done:
 		cancel()
 		<-ch
-		return errAuthenticationCanceled
+		return authenticationCanceledError
 	case e := <-ch:
 		cancel()
 		return e
@@ -952,7 +900,6 @@ func (driver *MesosSchedulerDriver) registerOnce() bool {
 		failover bool
 		pid      *upid.UPID
 		info     *mesos.FrameworkInfo
-		ctx      context.Context
 	)
 	if func() bool {
 		driver.eventLock.RLock()
@@ -966,7 +913,6 @@ func (driver *MesosSchedulerDriver) registerOnce() bool {
 		failover = driver.failover
 		pid = driver.masterPid
 		info = proto.Clone(driver.frameworkInfo).(*mesos.FrameworkInfo)
-		ctx = driver.context()
 		return true
 	}() {
 		// register framework
@@ -984,7 +930,7 @@ func (driver *MesosSchedulerDriver) registerOnce() bool {
 				Framework: info,
 			}
 		}
-		if err := driver.send(ctx, pid, message); err != nil {
+		if err := driver.send(pid, message); err != nil {
 			log.Errorf("failed to send RegisterFramework message: %v", err)
 			if _, err = driver.Stop(failover); err != nil {
 				log.Errorf("failed to stop scheduler driver: %v", err)
@@ -1035,15 +981,15 @@ waitForDeath:
 func (driver *MesosSchedulerDriver) Run() (mesos.Status, error) {
 	driver.eventLock.Lock()
 	defer driver.eventLock.Unlock()
-	return driver.run(driver.context())
+	return driver.run()
 }
 
 // run expected to be guarded by eventLock
-func (driver *MesosSchedulerDriver) run(ctx context.Context) (mesos.Status, error) {
+func (driver *MesosSchedulerDriver) run() (mesos.Status, error) {
 	stat, err := driver.start()
 
 	if err != nil {
-		return driver.stop(ctx, err, false)
+		return driver.stop(err, false)
 	}
 
 	if stat != mesos.Status_DRIVER_RUNNING {
@@ -1058,11 +1004,11 @@ func (driver *MesosSchedulerDriver) run(ctx context.Context) (mesos.Status, erro
 func (driver *MesosSchedulerDriver) Stop(failover bool) (mesos.Status, error) {
 	driver.eventLock.Lock()
 	defer driver.eventLock.Unlock()
-	return driver.stop(driver.context(), nil, failover)
+	return driver.stop(nil, failover)
 }
 
 // stop expects to be guarded by eventLock
-func (driver *MesosSchedulerDriver) stop(ctx context.Context, cause error, failover bool) (mesos.Status, error) {
+func (driver *MesosSchedulerDriver) stop(cause error, failover bool) (mesos.Status, error) {
 	log.Infoln("Stopping the scheduler driver")
 	if stat := driver.status; stat != mesos.Status_DRIVER_RUNNING {
 		return stat, fmt.Errorf("Unable to Stop, expected driver status %s, but is %s", mesos.Status_DRIVER_RUNNING, stat)
@@ -1077,7 +1023,7 @@ func (driver *MesosSchedulerDriver) stop(ctx context.Context, cause error, failo
 		//TODO(jdef) this is actually a little racy: we send an 'unregister' message but then
 		// immediately afterward the messenger is stopped in driver._stop(). so the unregister message
 		// may not actually end up being sent out.
-		if err := driver.send(ctx, driver.masterPid, message); err != nil {
+		if err := driver.send(driver.masterPid, message); err != nil {
 			log.Errorf("Failed to send UnregisterFramework message while stopping driver: %v\n", err)
 			if cause == nil {
 				cause = &ErrDriverAborted{}
@@ -1101,23 +1047,17 @@ func (driver *MesosSchedulerDriver) _stop(cause error, stopStatus mesos.Status) 
 		default:
 		}
 		close(driver.stopCh)
-		// decouple to avoid deadlock (avoid nested withScheduler() invocations)
-		go func() {
-			driver.eventLock.Lock()
-			defer driver.eventLock.Unlock()
-			if cause != nil {
-				log.V(1).Infof("Sending error via withScheduler: %v", cause)
-				driver.withScheduler(func(s Scheduler) { s.Error(driver, cause.Error()) })
-			} else {
-				// send a noop func, withScheduler needs to see that stopCh is closed
-				log.V(1).Infof("Sending kill signal to withScheduler")
-				driver.withScheduler(func(_ Scheduler) {})
-			}
-		}()
+		if cause != nil {
+			log.V(1).Infof("Sending error via withScheduler: %v", cause)
+			driver.withScheduler(func(s Scheduler) { s.Error(driver, cause.Error()) })
+		} else {
+			// send a noop func, withScheduler needs to see that stopCh is closed
+			log.V(1).Infof("Sending kill signal to withScheduler")
+			driver.withScheduler(func(_ Scheduler) {})
+		}
 	}()
 	driver.status = stopStatus
 	driver.connected = false
-	driver.connection = uuid.UUID{}
 
 	log.Info("stopping messenger")
 	err := driver.messenger.Stop()
@@ -1129,11 +1069,11 @@ func (driver *MesosSchedulerDriver) _stop(cause error, stopStatus mesos.Status) 
 func (driver *MesosSchedulerDriver) Abort() (stat mesos.Status, err error) {
 	driver.eventLock.Lock()
 	defer driver.eventLock.Unlock()
-	return driver.abort(driver.context(), nil)
+	return driver.abort(nil)
 }
 
 // abort expects to be guarded by eventLock
-func (driver *MesosSchedulerDriver) abort(ctx context.Context, cause error) (stat mesos.Status, err error) {
+func (driver *MesosSchedulerDriver) abort(cause error) (stat mesos.Status, err error) {
 	if driver.masterDetector != nil {
 		defer driver.masterDetector.Cancel()
 	}
@@ -1141,140 +1081,14 @@ func (driver *MesosSchedulerDriver) abort(ctx context.Context, cause error) (sta
 	log.Infof("Aborting framework [%+v]", driver.frameworkInfo.Id)
 
 	if driver.connected {
-		_, err = driver.stop(ctx, cause, true)
+		_, err = driver.stop(cause, true)
 	} else {
-		driver._stop(cause, mesos.Status_DRIVER_ABORTED)
+		driver.messenger.Stop()
 	}
 
 	stat = mesos.Status_DRIVER_ABORTED
 	driver.status = stat
 	return
-}
-
-func (driver *MesosSchedulerDriver) AcceptOffers(offerIds []*mesos.OfferID, operations []*mesos.Offer_Operation, filters *mesos.Filters) (mesos.Status, error) {
-	driver.eventLock.Lock()
-	defer driver.eventLock.Unlock()
-
-	if stat := driver.status; stat != mesos.Status_DRIVER_RUNNING {
-		return stat, fmt.Errorf("Unable to AcceptOffers, expected driver status %s, but got %s", mesos.Status_DRIVER_RUNNING, stat)
-	}
-
-	ctx := driver.context()
-	if !driver.connected {
-		err := ErrDisconnected
-		for _, operation := range operations {
-			if *operation.Type == mesos.Offer_Operation_LAUNCH {
-				// decouple lost task processing to avoid deadlock (avoid nested withScheduler() invocations)
-				operation := operation
-				go func() {
-					driver.eventLock.Lock()
-					defer driver.eventLock.Unlock()
-
-					for _, task := range operation.Launch.TaskInfos {
-						driver.pushLostTask(ctx, task, err.Error())
-					}
-				}()
-			}
-		}
-		log.Errorf("Failed to send LaunchTask message: %v\n", err)
-		return driver.status, err
-	}
-
-	okOperations := make([]*mesos.Offer_Operation, 0, len(operations))
-
-	for _, offerId := range offerIds {
-		for _, operation := range operations {
-			// Keep only the slave PIDs where we run tasks so we can send
-			// framework messages directly.
-			if !driver.cache.containsOffer(offerId) {
-				log.Warningf("Attempting to accept offers with unknown offer %s\n", offerId.GetValue())
-				continue
-			}
-
-			// Validate
-			switch *operation.Type {
-			case mesos.Offer_Operation_LAUNCH:
-				tasks := []*mesos.TaskInfo{}
-				// Set TaskInfo.executor.framework_id, if it's missing.
-				for _, task := range operation.Launch.TaskInfos {
-					newTask := *task
-					if newTask.Executor != nil && newTask.Executor.FrameworkId == nil {
-						newTask.Executor.FrameworkId = driver.frameworkInfo.Id
-					}
-					tasks = append(tasks, &newTask)
-				}
-				for _, task := range tasks {
-					if driver.cache.getOffer(offerId).offer.SlaveId.Equal(task.SlaveId) {
-						// cache the tasked slave, for future communication
-						pid := driver.cache.getOffer(offerId).slavePid
-						driver.cache.putSlavePid(task.SlaveId, pid)
-					} else {
-						log.Warningf("Attempting to launch task %s with the wrong slaveId offer %s\n", task.TaskId.GetValue(), task.SlaveId.GetValue())
-					}
-				}
-				operation.Launch.TaskInfos = tasks
-				okOperations = append(okOperations, operation)
-			case mesos.Offer_Operation_RESERVE:
-				// Only send reserved resources
-				filtered := util.FilterResources(operation.Reserve.Resources, func(res *mesos.Resource) bool { return res.Reservation != nil })
-				operation.Reserve.Resources = filtered
-				okOperations = append(okOperations, operation)
-			case mesos.Offer_Operation_UNRESERVE:
-				// Only send reserved resources
-				filtered := util.FilterResources(operation.Unreserve.Resources, func(res *mesos.Resource) bool { return res.Reservation != nil })
-				operation.Unreserve.Resources = filtered
-				okOperations = append(okOperations, operation)
-			case mesos.Offer_Operation_CREATE:
-				// Only send reserved resources disks with volumes
-				filtered := util.FilterResources(operation.Create.Volumes, func(res *mesos.Resource) bool {
-					return res.Reservation != nil && res.Disk != nil && res.GetName() == "disk"
-				})
-				operation.Create.Volumes = filtered
-				okOperations = append(okOperations, operation)
-			case mesos.Offer_Operation_DESTROY:
-				// Only send reserved resources disks with volumes
-				filtered := util.FilterResources(operation.Destroy.Volumes, func(res *mesos.Resource) bool {
-					return res.Reservation != nil && res.Disk != nil && res.GetName() == "disk"
-				})
-				operation.Destroy.Volumes = filtered
-				okOperations = append(okOperations, operation)
-			}
-		}
-
-		driver.cache.removeOffer(offerId) // if offer
-	}
-
-	// Accept Offers
-	message := &scheduler.Call{
-		FrameworkId: driver.frameworkInfo.Id,
-		Type:        scheduler.Call_ACCEPT.Enum(),
-		Accept: &scheduler.Call_Accept{
-			OfferIds:   offerIds,
-			Operations: okOperations,
-			Filters:    filters,
-		},
-	}
-
-	if err := driver.send(ctx, driver.masterPid, message); err != nil {
-		for _, operation := range operations {
-			if *operation.Type == mesos.Offer_Operation_LAUNCH {
-				// decouple lost task processing to avoid deadlock (avoid nested withScheduler() invocations)
-				operation := operation
-				go func() {
-					driver.eventLock.Lock()
-					defer driver.eventLock.Unlock()
-
-					for _, task := range operation.Launch.TaskInfos {
-						driver.pushLostTask(ctx, task, "Unable to launch tasks: "+err.Error())
-					}
-				}()
-			}
-		}
-		log.Errorf("Failed to send LaunchTask message: %v\n", err)
-		return driver.status, err
-	}
-
-	return driver.status, nil
 }
 
 func (driver *MesosSchedulerDriver) LaunchTasks(offerIds []*mesos.OfferID, tasks []*mesos.TaskInfo, filters *mesos.Filters) (mesos.Status, error) {
@@ -1285,24 +1099,15 @@ func (driver *MesosSchedulerDriver) LaunchTasks(offerIds []*mesos.OfferID, tasks
 		return stat, fmt.Errorf("Unable to LaunchTasks, expected driver status %s, but got %s", mesos.Status_DRIVER_RUNNING, stat)
 	}
 
-	ctx := driver.context()
-
 	// Launch tasks
 	if !driver.connected {
 		log.Infoln("Ignoring LaunchTasks message, disconnected from master.")
-		// decouple lost task processing to avoid deadlock (avoid nested withScheduler() invocations)
-		err := ErrDisconnected
-		go func() {
-			driver.eventLock.Lock()
-			defer driver.eventLock.Unlock()
-
-			// Send statusUpdate with status=TASK_LOST for each task.
-			// See sched.cpp L#823
-			for _, task := range tasks {
-				driver.pushLostTask(ctx, task, err.Error())
-			}
-		}()
-		return driver.status, err
+		// Send statusUpdate with status=TASK_LOST for each task.
+		// See sched.cpp L#823
+		for _, task := range tasks {
+			driver.pushLostTask(task, "Master is disconnected")
+		}
+		return driver.status, fmt.Errorf("Not connected to master.  Tasks marked as lost.")
 	}
 
 	okTasks := make([]*mesos.TaskInfo, 0, len(tasks))
@@ -1343,16 +1148,10 @@ func (driver *MesosSchedulerDriver) LaunchTasks(offerIds []*mesos.OfferID, tasks
 		Filters:     filters,
 	}
 
-	if err := driver.send(ctx, driver.masterPid, message); err != nil {
-		// decouple lost task processing to avoid deadlock (avoid nested withScheduler() invocations)
-		go func() {
-			driver.eventLock.Lock()
-			defer driver.eventLock.Unlock()
-
-			for _, task := range tasks {
-				driver.pushLostTask(ctx, task, "Unable to launch tasks: "+err.Error())
-			}
-		}()
+	if err := driver.send(driver.masterPid, message); err != nil {
+		for _, task := range tasks {
+			driver.pushLostTask(task, "Unable to launch tasks: "+err.Error())
+		}
 		log.Errorf("Failed to send LaunchTask message: %v\n", err)
 		return driver.status, err
 	}
@@ -1361,7 +1160,7 @@ func (driver *MesosSchedulerDriver) LaunchTasks(offerIds []*mesos.OfferID, tasks
 }
 
 // pushLostTask expects to be guarded by eventLock
-func (driver *MesosSchedulerDriver) pushLostTask(ctx context.Context, taskInfo *mesos.TaskInfo, why string) {
+func (driver *MesosSchedulerDriver) pushLostTask(taskInfo *mesos.TaskInfo, why string) {
 	msg := &mesos.StatusUpdateMessage{
 		Update: &mesos.StatusUpdate{
 			FrameworkId: driver.frameworkInfo.Id,
@@ -1381,7 +1180,7 @@ func (driver *MesosSchedulerDriver) pushLostTask(ctx context.Context, taskInfo *
 
 	// put it on internal chanel
 	// will cause handler to push to attached Scheduler
-	driver.statusUpdated(ctx, driver.self, msg)
+	driver.statusUpdated(driver.self, msg)
 }
 
 func (driver *MesosSchedulerDriver) KillTask(taskId *mesos.TaskID) (mesos.Status, error) {
@@ -1394,7 +1193,7 @@ func (driver *MesosSchedulerDriver) KillTask(taskId *mesos.TaskID) (mesos.Status
 
 	if !driver.connected {
 		log.Infoln("Ignoring kill task message, disconnected from master.")
-		return driver.status, ErrDisconnected
+		return driver.status, fmt.Errorf("Not connected to master")
 	}
 
 	message := &mesos.KillTaskMessage{
@@ -1402,7 +1201,7 @@ func (driver *MesosSchedulerDriver) KillTask(taskId *mesos.TaskID) (mesos.Status
 		TaskId:      taskId,
 	}
 
-	if err := driver.send(driver.context(), driver.masterPid, message); err != nil {
+	if err := driver.send(driver.masterPid, message); err != nil {
 		log.Errorf("Failed to send KillTask message: %v\n", err)
 		return driver.status, err
 	}
@@ -1420,7 +1219,7 @@ func (driver *MesosSchedulerDriver) RequestResources(requests []*mesos.Request) 
 
 	if !driver.connected {
 		log.Infoln("Ignoring request resource message, disconnected from master.")
-		return driver.status, ErrDisconnected
+		return driver.status, fmt.Errorf("Not connected to master")
 	}
 
 	message := &mesos.ResourceRequestMessage{
@@ -1428,7 +1227,7 @@ func (driver *MesosSchedulerDriver) RequestResources(requests []*mesos.Request) 
 		Requests:    requests,
 	}
 
-	if err := driver.send(driver.context(), driver.masterPid, message); err != nil {
+	if err := driver.send(driver.masterPid, message); err != nil {
 		log.Errorf("Failed to send ResourceRequest message: %v\n", err)
 		return driver.status, err
 	}
@@ -1451,13 +1250,13 @@ func (driver *MesosSchedulerDriver) ReviveOffers() (mesos.Status, error) {
 	}
 	if !driver.connected {
 		log.Infoln("Ignoring revive offers message, disconnected from master.")
-		return driver.status, ErrDisconnected
+		return driver.status, fmt.Errorf("Not connected to master.")
 	}
 
 	message := &mesos.ReviveOffersMessage{
 		FrameworkId: driver.frameworkInfo.Id,
 	}
-	if err := driver.send(driver.context(), driver.masterPid, message); err != nil {
+	if err := driver.send(driver.masterPid, message); err != nil {
 		log.Errorf("Failed to send ReviveOffers message: %v\n", err)
 		return driver.status, err
 	}
@@ -1474,7 +1273,7 @@ func (driver *MesosSchedulerDriver) SendFrameworkMessage(executorId *mesos.Execu
 	}
 	if !driver.connected {
 		log.Infoln("Ignoring send framework message, disconnected from master.")
-		return driver.status, ErrDisconnected
+		return driver.status, fmt.Errorf("Not connected to master")
 	}
 
 	message := &mesos.FrameworkToExecutorMessage{
@@ -1490,13 +1289,13 @@ func (driver *MesosSchedulerDriver) SendFrameworkMessage(executorId *mesos.Execu
 		if slavePid.Equal(driver.self) {
 			return driver.status, nil
 		}
-		if err := driver.send(driver.context(), slavePid, message); err != nil {
+		if err := driver.send(slavePid, message); err != nil {
 			log.Errorf("Failed to send framework to executor message: %v\n", err)
 			return driver.status, err
 		}
 	} else {
 		// slavePid not cached, send to master.
-		if err := driver.send(driver.context(), driver.masterPid, message); err != nil {
+		if err := driver.send(driver.masterPid, message); err != nil {
 			log.Errorf("Failed to send framework to executor message: %v\n", err)
 			return driver.status, err
 		}
@@ -1514,14 +1313,14 @@ func (driver *MesosSchedulerDriver) ReconcileTasks(statuses []*mesos.TaskStatus)
 	}
 	if !driver.connected {
 		log.Infoln("Ignoring send Reconcile Tasks message, disconnected from master.")
-		return driver.status, ErrDisconnected
+		return driver.status, fmt.Errorf("Not connected to master.")
 	}
 
 	message := &mesos.ReconcileTasksMessage{
 		FrameworkId: driver.frameworkInfo.Id,
 		Statuses:    statuses,
 	}
-	if err := driver.send(driver.context(), driver.masterPid, message); err != nil {
+	if err := driver.send(driver.masterPid, message); err != nil {
 		log.Errorf("Failed to send reconcile tasks message: %v\n", err)
 		return driver.status, err
 	}
@@ -1530,10 +1329,10 @@ func (driver *MesosSchedulerDriver) ReconcileTasks(statuses []*mesos.TaskStatus)
 }
 
 // error expects to be guarded by eventLock
-func (driver *MesosSchedulerDriver) fatal(ctx context.Context, err string) {
+func (driver *MesosSchedulerDriver) error(err string) {
 	if driver.status == mesos.Status_DRIVER_ABORTED {
 		log.V(3).Infoln("Ignoring error message, the driver is aborted!")
 		return
 	}
-	driver.abort(ctx, &ErrDriverAborted{Reason: err})
+	driver.abort(&ErrDriverAborted{Reason: err})
 }

@@ -17,11 +17,12 @@ package mesosrunners
 
 import (
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/elodina/stack-deploy/framework"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/mesos/mesos-go/scheduler"
-	"strings"
-	"sync"
 )
 
 type RunOnceRunner struct {
@@ -43,7 +44,6 @@ func (r *RunOnceRunner) StageApplication(application *framework.Application, sta
 	if instances == 0 {
 		statusChan := make(chan *framework.ApplicationRunStatus, 1)
 		statusChan <- framework.NewApplicationRunStatus(application, nil)
-
 		return statusChan
 	}
 
@@ -90,7 +90,6 @@ func (r *RunOnceRunner) StatusUpdate(driver scheduler.SchedulerDriver, status *m
 	if ctx.StatusUpdate(driver, status) {
 		delete(r.applications, applicationID)
 	}
-
 	return true
 }
 

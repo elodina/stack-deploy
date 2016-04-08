@@ -42,57 +42,37 @@ const (
 	defaultMinDetectorCyclePeriod = 1 * time.Second
 )
 
-type (
-	ZKInterface interface {
-		Stopped() <-chan struct{}
-		Stop()
-		Data(string) ([]byte, error)
-		WatchChildren(string) (string, <-chan []string, <-chan error)
-	}
-
-	infoCodec func(path, node string) (*mesos.MasterInfo, error)
-
-	// Detector uses ZooKeeper to detect new leading master.
-	MasterDetector struct {
-		// detection should not signal master change listeners more frequently than this
-		cancel func()
-		client ZKInterface
-		done   chan struct{}
-		// latch: only install, at most, one ignoreChanged listener; see MasterDetector.Detect
-		ignoreInstalled        int32
-		leaderNode             string
-		minDetectorCyclePeriod time.Duration
-
-		// guard against concurrent invocations of bootstrapFunc
-		bootstrapLock sync.RWMutex
-		bootstrapFunc func(ZKInterface, <-chan struct{}) (ZKInterface, error) // for one-time zk client initiation
-	}
-)
-
 // reasonable default for a noop change listener
 var ignoreChanged = detector.OnMasterChanged(func(*mesos.MasterInfo) {})
 
-// MinCyclePeriod is a functional option that determines the highest frequency of master change notifications
-func MinCyclePeriod(d time.Duration) detector.Option {
-	return func(di interface{}) detector.Option {
-		md := di.(*MasterDetector)
-		old := md.minDetectorCyclePeriod
-		md.minDetectorCyclePeriod = d
-		return MinCyclePeriod(old)
-	}
+type zkInterface interface {
+	stopped() <-chan struct{}
+	stop()
+	data(string) ([]byte, error)
+	watchChildren(string) (string, <-chan []string, <-chan error)
 }
 
-func Bootstrap(f func(ZKInterface, <-chan struct{}) (ZKInterface, error)) detector.Option {
-	return func(di interface{}) detector.Option {
-		md := di.(*MasterDetector)
-		old := md.bootstrapFunc
-		md.bootstrapFunc = f
-		return Bootstrap(old)
-	}
+type infoCodec func(path, node string) (*mesos.MasterInfo, error)
+
+// Detector uses ZooKeeper to detect new leading master.
+type MasterDetector struct {
+	client     zkInterface
+	leaderNode string
+
+	bootstrapLock sync.RWMutex // guard against concurrent invocations of bootstrapFunc
+	bootstrapFunc func() error // for one-time zk client initiation
+
+	// latch: only install, at most, one ignoreChanged listener; see MasterDetector.Detect
+	ignoreInstalled int32
+
+	// detection should not signal master change listeners more frequently than this
+	minDetectorCyclePeriod time.Duration
+	done                   chan struct{}
+	cancel                 func()
 }
 
 // Internal constructor function
-func NewMasterDetector(zkurls string, options ...detector.Option) (*MasterDetector, error) {
+func NewMasterDetector(zkurls string) (*MasterDetector, error) {
 	zkHosts, zkPath, err := parseZk(zkurls)
 	if err != nil {
 		log.Fatalln("Failed to parse url", err)
@@ -105,16 +85,11 @@ func NewMasterDetector(zkurls string, options ...detector.Option) (*MasterDetect
 		cancel: func() {},
 	}
 
-	detector.bootstrapFunc = func(client ZKInterface, _ <-chan struct{}) (ZKInterface, error) {
-		if client == nil {
-			return connect2(zkHosts, zkPath)
+	detector.bootstrapFunc = func() (err error) {
+		if detector.client == nil {
+			detector.client, err = connect2(zkHosts, zkPath)
 		}
-		return client, nil
-	}
-
-	// apply options last so that they can override default behavior
-	for _, opt := range options {
-		opt(detector)
+		return
 	}
 
 	log.V(2).Infoln("Created new detector to watch", zkHosts, zkPath)
@@ -182,7 +157,7 @@ func logPanic(f func()) {
 }
 
 func (md *MasterDetector) pullMasterInfo(path, node string) (*mesos.MasterInfo, error) {
-	data, err := md.client.Data(fmt.Sprintf("%s/%s", path, node))
+	data, err := md.client.data(fmt.Sprintf("%s/%s", path, node))
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve leader data: %v", err)
 	}
@@ -196,7 +171,7 @@ func (md *MasterDetector) pullMasterInfo(path, node string) (*mesos.MasterInfo, 
 }
 
 func (md *MasterDetector) pullMasterJsonInfo(path, node string) (*mesos.MasterInfo, error) {
-	data, err := md.client.Data(fmt.Sprintf("%s/%s", path, node))
+	data, err := md.client.data(fmt.Sprintf("%s/%s", path, node))
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve leader data: %v", err)
 	}
@@ -251,15 +226,13 @@ func (md *MasterDetector) callBootstrap() (e error) {
 	defer md.bootstrapLock.Unlock()
 
 	clientConfigured := md.client != nil
-
-	md.client, e = md.bootstrapFunc(md.client, md.done)
-	if e == nil && !clientConfigured && md.client != nil {
+	if e = md.bootstrapFunc(); e == nil && !clientConfigured && md.client != nil {
 		// chain the lifetime of this detector to that of the newly created client impl
 		client := md.client
-		md.cancel = client.Stop
+		md.cancel = client.stop
 		go func() {
 			defer close(md.done)
-			<-client.Stopped()
+			<-client.stopped()
 		}()
 	}
 	return
@@ -292,7 +265,7 @@ func (md *MasterDetector) Detect(f detector.MasterChanged) (err error) {
 }
 
 func (md *MasterDetector) detect(f detector.MasterChanged) {
-	log.V(3).Infoln("detecting children at", CurrentPath)
+	log.V(3).Infoln("detecting children at", currentPath)
 detectLoop:
 	for {
 		select {
@@ -300,8 +273,8 @@ detectLoop:
 			return
 		default:
 		}
-		log.V(3).Infoln("watching children at", CurrentPath)
-		path, childrenCh, errCh := md.client.WatchChildren(CurrentPath)
+		log.V(3).Infoln("watching children at", currentPath)
+		path, childrenCh, errCh := md.client.watchChildren(currentPath)
 		rewatch := false
 		for {
 			started := time.Now()

@@ -1,6 +1,8 @@
 stack-deploy
 ==========
 
+[![Build Status](https://travis-ci.org/elodina/stack-deploy.svg?branch=master)](https://travis-ci.org/elodina/stack-deploy)
+
 [Installation](#installation)
 * [Prerequisites](#prerequisites)
 * [Start the server](#start-the-server)
@@ -149,7 +151,9 @@ Stack is a YAML file that contains information about Applications that should be
 `after_scheduler` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running `launch_command`.     
 `before_task` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox before running each task in `tasks`.     
 `after_task` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running each task in `tasks`.     
-`after_tasks` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running all tasks in `tasks`.     
+`after_tasks` - [`array[string]`] - any number of arbitrary shell commands to run in stack-deploy sandbox after running all tasks in `tasks`.
+`start_time` - [`string`] - cron-compatible string when to start running task. Works only with `run-once` tasks.
+`time_schedule` - [`string`] - cron-compatible string with schedule of periodic task. Works only with `run-once` tasks.
 
 Stack inheritance
 ---------------------
