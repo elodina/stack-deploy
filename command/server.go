@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"regexp"
 
+	plog "github.com/elodina/pyrgus/log"
 	"github.com/elodina/stack-deploy/framework"
 	marathon "github.com/gambol99/go-marathon"
 	"github.com/gocql/gocql"
@@ -58,9 +59,9 @@ func (sc *ServerCommand) Run(args []string) int {
 		proto             = flags.Int("proto", 3, "Cassandra protocol version")
 		connectRetries    = flags.Int("connect.retries", 10, "Number of retries to connect to either Marathon or Cassandra")
 		connectBackoff    = flags.Duration("connect.backoff", 10*time.Second, "Backoff between connection attempts to either Marathon or Cassandra")
-		// debug             = flags.Bool("debug", false, "Flag for debug mode")
-		dev       = flags.Bool("dev", false, "Flag for developer mode")
-		variables = make(vars)
+		debug             = flags.Bool("debug", false, "Flag for debug mode")
+		dev               = flags.Bool("dev", false, "Flag for developer mode")
+		variables         = make(vars)
 	)
 	flags.StringVar(&schedulerConfig.Master, "master", "127.0.0.1:5050", "Mesos Master address <ip:port>.")
 	flags.StringVar(&schedulerConfig.User, "framework.user", "", "Mesos user. Defaults to current system user.")
@@ -70,6 +71,9 @@ func (sc *ServerCommand) Run(args []string) int {
 	flags.Var(variables, "var", "Global variables to add to every stack context run by stack-deploy server. Multiple occurrences of this flag allowed.")
 
 	flags.Parse(args)
+	if *debug {
+		framework.Logger = plog.NewConsoleLogger(plog.DebugLevel, plog.DefaultLogFormat)
+	}
 
 	ctrlc := make(chan os.Signal, 1)
 	signal.Notify(ctrlc, os.Interrupt)
