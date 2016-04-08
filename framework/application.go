@@ -14,7 +14,6 @@ import (
 
 	"github.com/elodina/stack-deploy/constraints"
 	marathon "github.com/gambol99/go-marathon"
-	"github.com/yanzay/log"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -221,20 +220,10 @@ func (a *Application) runMarathon(context *StackContext, client marathon.Maratho
 }
 
 func (a *Application) runMesos(scheduler Scheduler) error {
-	applicationStatuses := scheduler.RunApplication(a)
-	status := <-applicationStatuses
+	status := <-scheduler.RunApplication(a)
 	if status.Error != nil {
 		return status.Error
 	}
-	go func() {
-		for {
-			status = <-applicationStatuses
-			if status.Error != nil {
-				log.Errorf("Application status error: %s", status.Error)
-				return
-			}
-		}
-	}()
 	return nil
 }
 
