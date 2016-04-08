@@ -21,3 +21,4 @@ import:
 - package: github.com/satori/go.uuid
 - package: github.com/yanzay/log
 - package: gopkg.in/yaml.v2
+- package: github.com/stretchr/testify

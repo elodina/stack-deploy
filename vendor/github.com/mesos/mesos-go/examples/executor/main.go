@@ -21,15 +21,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math/rand"
-	"time"
 
 	exec "github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-)
-
-var (
-	slowTasks = flag.Bool("slow_tasks", false, "When true tasks will take several seconds before responding with TASK_FINISHED; useful for debugging failover")
 )
 
 type exampleExecutor struct {
@@ -69,34 +63,18 @@ func (exec *exampleExecutor) LaunchTask(driver exec.ExecutorDriver, taskInfo *me
 	//
 	// this is where one would perform the requested task
 	//
-	finishTask := func() {
-		// finish task
-		fmt.Println("Finishing task", taskInfo.GetName())
-		finStatus := &mesos.TaskStatus{
-			TaskId: taskInfo.GetTaskId(),
-			State:  mesos.TaskState_TASK_FINISHED.Enum(),
-		}
-		if _, err := driver.SendStatusUpdate(finStatus); err != nil {
-			fmt.Println("error sending FINISHED", err)
-		}
-		fmt.Println("Task finished", taskInfo.GetName())
+
+	// finish task
+	fmt.Println("Finishing task", taskInfo.GetName())
+	finStatus := &mesos.TaskStatus{
+		TaskId: taskInfo.GetTaskId(),
+		State:  mesos.TaskState_TASK_FINISHED.Enum(),
 	}
-	if *slowTasks {
-		starting := &mesos.TaskStatus{
-			TaskId: taskInfo.GetTaskId(),
-			State:  mesos.TaskState_TASK_STARTING.Enum(),
-		}
-		if _, err := driver.SendStatusUpdate(starting); err != nil {
-			fmt.Println("error sending STARTING", err)
-		}
-		delay := time.Duration(rand.Intn(90)+10) * time.Second
-		go func() {
-			time.Sleep(delay) // TODO(jdef) add jitter
-			finishTask()
-		}()
-	} else {
-		finishTask()
+	_, err = driver.SendStatusUpdate(finStatus)
+	if err != nil {
+		fmt.Println("Got error", err)
 	}
+	fmt.Println("Task finished", taskInfo.GetName())
 }
 
 func (exec *exampleExecutor) KillTask(exec.ExecutorDriver, *mesos.TaskID) {

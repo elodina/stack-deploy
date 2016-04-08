@@ -16,60 +16,59 @@
  * limitations under the License.
  */
 
-package mock
+package executor
 
 import (
-	"github.com/mesos/mesos-go/executor"
 	"github.com/mesos/mesos-go/mesosproto"
 	"github.com/stretchr/testify/mock"
 )
 
-// Executor is used for testing the executor driver.
-type Executor struct {
+// MockedExecutor is used for testing the executor driver.
+type MockedExecutor struct {
 	mock.Mock
 }
 
-// New returns a mocked executor.
-func New() *Executor {
-	return &Executor{}
+// NewMockedExecutor returns a mocked executor.
+func NewMockedExecutor() *MockedExecutor {
+	return &MockedExecutor{}
 }
 
 // Registered implements the Registered handler.
-func (e *Executor) Registered(executor.ExecutorDriver, *mesosproto.ExecutorInfo, *mesosproto.FrameworkInfo, *mesosproto.SlaveInfo) {
+func (e *MockedExecutor) Registered(ExecutorDriver, *mesosproto.ExecutorInfo, *mesosproto.FrameworkInfo, *mesosproto.SlaveInfo) {
 	e.Called()
 }
 
 // Reregistered implements the Reregistered handler.
-func (e *Executor) Reregistered(executor.ExecutorDriver, *mesosproto.SlaveInfo) {
+func (e *MockedExecutor) Reregistered(ExecutorDriver, *mesosproto.SlaveInfo) {
 	e.Called()
 }
 
 // Disconnected implements the Disconnected handler.
-func (e *Executor) Disconnected(executor.ExecutorDriver) {
+func (e *MockedExecutor) Disconnected(ExecutorDriver) {
 	e.Called()
 }
 
 // LaunchTask implements the LaunchTask handler.
-func (e *Executor) LaunchTask(executor.ExecutorDriver, *mesosproto.TaskInfo) {
+func (e *MockedExecutor) LaunchTask(ExecutorDriver, *mesosproto.TaskInfo) {
 	e.Called()
 }
 
 // KillTask implements the KillTask handler.
-func (e *Executor) KillTask(executor.ExecutorDriver, *mesosproto.TaskID) {
+func (e *MockedExecutor) KillTask(ExecutorDriver, *mesosproto.TaskID) {
 	e.Called()
 }
 
 // FrameworkMessage implements the FrameworkMessage handler.
-func (e *Executor) FrameworkMessage(executor.ExecutorDriver, string) {
+func (e *MockedExecutor) FrameworkMessage(ExecutorDriver, string) {
 	e.Called()
 }
 
 // Shutdown implements the Shutdown handler.
-func (e *Executor) Shutdown(executor.ExecutorDriver) {
+func (e *MockedExecutor) Shutdown(ExecutorDriver) {
 	e.Called()
 }
 
 // Error implements the Error handler.
-func (e *Executor) Error(executor.ExecutorDriver, string) {
+func (e *MockedExecutor) Error(ExecutorDriver, string) {
 	e.Called()
 }

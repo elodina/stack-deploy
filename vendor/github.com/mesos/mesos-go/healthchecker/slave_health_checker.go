@@ -44,9 +44,9 @@ type SlaveHealthChecker struct {
 	slaveUPID                *upid.UPID
 	tr                       *http.Transport
 	client                   *http.Client
-	threshold                int32         // marked unhealthy once continuousUnhealthCount is greater than this
-	checkDuration            time.Duration // perform the check at this interval
-	continuousUnhealthyCount int32         // marked unhealthy when this exceeds threshold
+	threshold                int32
+	checkDuration            time.Duration
+	continuousUnhealthyCount int32
 	stop                     chan struct{}
 	ch                       chan time.Time
 	paused                   bool
@@ -131,10 +131,6 @@ func (s *SlaveHealthChecker) Stop() {
 	close(s.stop)
 }
 
-type errHttp struct{ StatusCode int }
-
-func (e *errHttp) Error() string { return fmt.Sprintf("http error code: %d", e.StatusCode) }
-
 func (s *SlaveHealthChecker) doCheck(pid upid.UPID) {
 	unhealthy := false
 	path := fmt.Sprintf("http://%s:%s/%s/health", pid.Host, pid.Port, pid.ID)
@@ -146,7 +142,7 @@ func (s *SlaveHealthChecker) doCheck(pid upid.UPID) {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return &errHttp{resp.StatusCode}
+			return fmt.Errorf("http status error: %v\n", resp.StatusCode)
 		}
 		return nil
 	})
@@ -156,7 +152,7 @@ func (s *SlaveHealthChecker) doCheck(pid upid.UPID) {
 	default:
 	}
 	if err != nil {
-		log.Errorf("Failed to request the health path: %v", err)
+		log.Errorf("Failed to request the health path: %v\n", err)
 		unhealthy = true
 	}
 	if unhealthy {

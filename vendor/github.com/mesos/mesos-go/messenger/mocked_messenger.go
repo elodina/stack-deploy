@@ -16,13 +16,12 @@
  * limitations under the License.
  */
 
-package mock
+package messenger
 
 import (
 	"reflect"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/mesos/mesos-go/messenger"
 	"github.com/mesos/mesos-go/upid"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/net/context"
@@ -33,46 +32,46 @@ type message struct {
 	msg  proto.Message
 }
 
-// Messenger is a messenger that returns error on every operation.
-type Messenger struct {
+// MockedMessenger is a messenger that returns error on every operation.
+type MockedMessenger struct {
 	mock.Mock
 	messageQueue chan *message
-	handlers     map[string]messenger.MessageHandler
+	handlers     map[string]MessageHandler
 	stop         chan struct{}
 }
 
-// NewMessenger returns a mocked messenger used for testing.
-func NewMessenger() *Messenger {
-	return &Messenger{
+// NewMockedMessenger returns a mocked messenger used for testing.
+func NewMockedMessenger() *MockedMessenger {
+	return &MockedMessenger{
 		messageQueue: make(chan *message, 1),
-		handlers:     make(map[string]messenger.MessageHandler),
+		handlers:     make(map[string]MessageHandler),
 		stop:         make(chan struct{}),
 	}
 }
 
 // Install is a mocked implementation.
-func (m *Messenger) Install(handler messenger.MessageHandler, msg proto.Message) error {
+func (m *MockedMessenger) Install(handler MessageHandler, msg proto.Message) error {
 	m.handlers[reflect.TypeOf(msg).Elem().Name()] = handler
 	return m.Called().Error(0)
 }
 
 // Send is a mocked implementation.
-func (m *Messenger) Send(ctx context.Context, upid *upid.UPID, msg proto.Message) error {
+func (m *MockedMessenger) Send(ctx context.Context, upid *upid.UPID, msg proto.Message) error {
 	return m.Called().Error(0)
 }
 
-func (m *Messenger) Route(ctx context.Context, upid *upid.UPID, msg proto.Message) error {
+func (m *MockedMessenger) Route(ctx context.Context, upid *upid.UPID, msg proto.Message) error {
 	return m.Called().Error(0)
 }
 
 // Start is a mocked implementation.
-func (m *Messenger) Start() error {
+func (m *MockedMessenger) Start() error {
 	go m.recvLoop()
 	return m.Called().Error(0)
 }
 
 // Stop is a mocked implementation.
-func (m *Messenger) Stop() error {
+func (m *MockedMessenger) Stop() error {
 	// don't close an already-closed channel
 	select {
 	case <-m.stop:
@@ -84,11 +83,11 @@ func (m *Messenger) Stop() error {
 }
 
 // UPID is a mocked implementation.
-func (m *Messenger) UPID() upid.UPID {
+func (m *MockedMessenger) UPID() upid.UPID {
 	return m.Called().Get(0).(upid.UPID)
 }
 
-func (m *Messenger) recvLoop() {
+func (m *MockedMessenger) recvLoop() {
 	for {
 		select {
 		case <-m.stop:
@@ -102,6 +101,6 @@ func (m *Messenger) recvLoop() {
 
 // Recv receives a upid and a message, it will dispatch the message to its handler
 // with the upid. This is for testing.
-func (m *Messenger) Recv(from *upid.UPID, msg proto.Message) {
+func (m *MockedMessenger) Recv(from *upid.UPID, msg proto.Message) {
 	m.messageQueue <- &message{from, msg}
 }
