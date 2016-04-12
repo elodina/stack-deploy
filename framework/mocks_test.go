@@ -112,3 +112,11 @@ func (ms *MockScheduler) RunApplication(app *Application) <-chan *ApplicationRun
 func (ms *MockScheduler) GetMesosState() MesosState {
 	return ms.state
 }
+
+func (ms *MockScheduler) GetScheduledTasks() []*ScheduledTask {
+	return []*ScheduledTask{}
+}
+
+func (ms *MockScheduler) RemoveScheduled(int64) bool {
+	return true
+}
