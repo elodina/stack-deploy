@@ -50,3 +50,7 @@ type CreateUserRequest struct {
 type RefreshTokenRequest struct {
 	Name string `json:"name"`
 }
+
+type RemoveScheduledRequest struct {
+	ID int64 `json:"id"`
+}

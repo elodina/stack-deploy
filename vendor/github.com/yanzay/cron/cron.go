@@ -4,6 +4,7 @@ package cron
 
 import (
 	"log"
+	"math/rand"
 	"runtime"
 	"sort"
 	"time"
@@ -16,6 +17,7 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
+	delete   chan int64
 	snapshot chan []*Entry
 	running  bool
 	ErrorLog *log.Logger
@@ -48,6 +50,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// Unique identifier of Entry
+	ID int64
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -74,6 +79,7 @@ func New() *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
+		delete:   make(chan int64),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
@@ -87,32 +93,47 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
+func (c *Cron) AddFunc(spec string, cmd func()) (int64, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd Job) (int64, error) {
 	schedule, err := Parse(spec)
 	if err != nil {
-		return err
+		return -1, err
 	}
-	c.Schedule(schedule, cmd)
-	return nil
+
+	return c.Schedule(schedule, cmd), nil
+}
+
+func (c *Cron) DeleteJob(id int64) {
+	if !c.running {
+		for i, entry := range c.entries {
+			if entry.ID == id {
+				c.entries = append(c.entries[:i], c.entries[i+1:]...)
+				return
+			}
+		}
+	}
+	c.delete <- id
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) int64 {
+	id := rand.Int63()
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		ID:       id,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
-		return
+		return id
 	}
 
 	c.add <- entry
+	return id
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -181,6 +202,14 @@ func (c *Cron) run() {
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(time.Now().Local())
+
+		case delID := <-c.delete:
+			for i, entry := range c.entries {
+				if entry.ID == delID {
+					c.entries = append(c.entries[:i], c.entries[i+1:]...)
+					break
+				}
+			}
 
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()

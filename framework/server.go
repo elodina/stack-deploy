@@ -44,6 +44,10 @@ func (ts *StackDeployServer) Start() {
 	http.HandleFunc("/run", ts.Auth(ts.RunHandler))
 	http.HandleFunc("/createstack", ts.Auth(ts.CreateStackHandler))
 	http.HandleFunc("/removestack", ts.Auth(ts.RemoveStackHandler))
+
+	http.HandleFunc("/scheduled", ts.Auth(ts.ScheduledHandler))
+	http.HandleFunc("/scheduled/delete", ts.Auth(ts.RemoveScheduledHandler))
+
 	http.HandleFunc("/health", ts.HealthHandler)
 	http.HandleFunc("/createuser", ts.Auth(ts.Admin(ts.CreateUserHandler)))
 	http.HandleFunc("/refreshtoken", ts.Auth(ts.Admin(ts.RefreshTokenHandler)))
@@ -276,6 +280,36 @@ func (ts *StackDeployServer) CreateUserHandler(w http.ResponseWriter, r *http.Re
 	}
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(key))
+}
+
+func (ts *StackDeployServer) ScheduledHandler(w http.ResponseWriter, r *http.Request) {
+	tasks := ts.scheduler.GetScheduledTasks()
+	resp, err := json.Marshal(tasks)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
+}
+
+func (ts *StackDeployServer) RemoveScheduledHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	var request RemoveScheduledRequest
+	err := decoder.Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	removed := ts.scheduler.RemoveScheduled(request.ID)
+	if !removed {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("Task %d not found", request.ID)))
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("%d deleted", request.ID)))
 }
 
 func (ts *StackDeployServer) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {

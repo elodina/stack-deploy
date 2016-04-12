@@ -24,7 +24,7 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
-	"github.com/robfig/cron"
+	"github.com/yanzay/cron"
 	"strings"
 	"time"
 )
@@ -50,13 +50,16 @@ type Scheduler interface {
 	Start() error
 	RunApplication(application *Application) <-chan *ApplicationRunStatus
 	GetMesosState() MesosState
+	GetScheduledTasks() []*ScheduledTask
+	RemoveScheduled(int64) bool
 }
 
 type StackDeployScheduler struct {
 	*SchedulerConfig
-	driver scheduler.SchedulerDriver
-	state  MesosState
-	Cron   *cron.Cron
+	driver         scheduler.SchedulerDriver
+	state          MesosState
+	Cron           *cron.Cron
+	scheduledTasks []*ScheduledTask
 }
 
 func NewScheduler(config *SchedulerConfig) *StackDeployScheduler {
@@ -64,6 +67,7 @@ func NewScheduler(config *SchedulerConfig) *StackDeployScheduler {
 		SchedulerConfig: config,
 		state:           NewMesosClusterState(config.Master),
 		Cron:            cron.New(),
+		scheduledTasks:  make([]*ScheduledTask, 0),
 	}
 }
 
@@ -113,6 +117,32 @@ func (s *StackDeployScheduler) Start() error {
 	}()
 
 	return nil
+}
+
+type ScheduledTask struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	StartTime    string `json:"start_time"`
+	TimeSchedule string `json:"time_schedule"`
+}
+
+func (s *StackDeployScheduler) GetScheduledTasks() []*ScheduledTask {
+	return s.scheduledTasks
+}
+
+func (s *StackDeployScheduler) RemoveScheduled(id int64) bool {
+	runner := MesosTaskRunners["run-once"]
+	Logger.Info("Deleting scheduled task: %d", id)
+	runner.DeleteSchedule(id, s.Cron)
+	for i, task := range s.scheduledTasks {
+		Logger.Info("%d == %d: %t", task.ID, id, task.ID == id)
+		if task.ID == id {
+			Logger.Info("Task %d found. Removing from list", id)
+			s.scheduledTasks = append(s.scheduledTasks[:i], s.scheduledTasks[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 func (s *StackDeployScheduler) Registered(driver scheduler.SchedulerDriver, id *mesos.FrameworkID, master *mesos.MasterInfo) {
@@ -201,7 +231,15 @@ func (s *StackDeployScheduler) RunApplication(application *Application) <-chan *
 	}
 
 	if application.TimeSchedule != "" || application.StartTime != "" {
-		return runner.ScheduleApplication(application, s.GetMesosState(), s.Cron)
+		id, ch := runner.ScheduleApplication(application, s.GetMesosState(), s.Cron)
+		task := &ScheduledTask{
+			ID:           id,
+			Name:         application.ID,
+			TimeSchedule: application.TimeSchedule,
+			StartTime:    application.StartTime,
+		}
+		s.scheduledTasks = append(s.scheduledTasks, task)
+		return ch
 	}
 
 	return runner.StageApplication(application, s.GetMesosState())

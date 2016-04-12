@@ -328,6 +328,27 @@ applications:
 
 A run-once application is considered successful if all its tasks returned with status code 0. If any task returns with non-zero exit code, the whole application is considered failed and tasks are not retried. Stack deployment then stops immediately.
 
+Time-scheduled tasks management
+----------------------------------
+Show list of all time-scheduled tasks:
+```
+./stack-deploy scheduled
+```
+Example output:
+```
+[5577006791947779410] start_with_schedule
+  start: '0 39 13 8 4 6'
+  schedule: '@every 17s'
+[6129484611666145821] start_only
+  start: '0 39 13 8 4 6'
+  schedule: ''
+```
+
+You can cancel any time-scheduled task by:
+```
+./stack-deploy scheduled --remove 6129484611666145821 # ID from previous step
+```
+
 Minimal stack examples
 ----------------------------
 

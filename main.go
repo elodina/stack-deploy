@@ -58,6 +58,9 @@ func commands() map[string]cli.CommandFactory {
 		"addlayer": func() (cli.Command, error) {
 			return new(command.AddLayerCommand), nil
 		},
+		"scheduled": func() (cli.Command, error) {
+			return new(command.ScheduledCommand), nil
+		},
 	}
 }
 

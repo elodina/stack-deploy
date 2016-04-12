@@ -144,6 +144,35 @@ func (c *Client) RefreshToken(data *RefreshTokenRequest) (string, error) {
 	return string(resp), nil
 }
 
+func (c *Client) Scheduled() ([]*ScheduledTask, error) {
+	request := apiRequest{
+		url:  "/scheduled",
+		data: make(map[string]string),
+	}
+	resp, err := c.request(request)
+	if err != nil {
+		return nil, err
+	}
+	var response []*ScheduledTask
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *Client) RemoveScheduled(data *RemoveScheduledRequest) (string, error) {
+	request := apiRequest{
+		url:  "/scheduled/delete",
+		data: data,
+	}
+	resp, err := c.request(request)
+	if err != nil {
+		return "", err
+	}
+	return string(resp), nil
+}
+
 func (c *Client) request(request apiRequest) ([]byte, error) {
 	Logger.Debug("Sending request: %v", request)
 	jsonData, err := json.Marshal(request.data)
