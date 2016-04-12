@@ -19,10 +19,13 @@ import (
 	"github.com/gambol99/go-marathon"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/mesos/mesos-go/scheduler"
+	"github.com/yanzay/cron"
 )
 
 type CronScheduler interface {
-	AddFunc(string, func()) error
+	AddFunc(string, func()) (int64, error)
+	DeleteJob(int64)
+	Entries() []*cron.Entry
 }
 
 var TaskRunners map[string]TaskRunner
@@ -34,7 +37,8 @@ type TaskRunner interface {
 }
 
 type MesosTaskRunner interface {
-	ScheduleApplication(*Application, MesosState, CronScheduler) <-chan *ApplicationRunStatus
+	ScheduleApplication(*Application, MesosState, CronScheduler) (int64, <-chan *ApplicationRunStatus)
+	DeleteSchedule(int64, CronScheduler)
 	StageApplication(application *Application, mesos MesosState) <-chan *ApplicationRunStatus
 	ResourceOffer(driver scheduler.SchedulerDriver, offer *mesos.Offer) (string, error)
 	StatusUpdate(driver scheduler.SchedulerDriver, status *mesos.TaskStatus) bool
