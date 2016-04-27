@@ -28,6 +28,11 @@ func NewClient(host string) *Client {
 	if !strings.HasPrefix(host, "http://") {
 		host = "http://" + host
 	}
+
+	if strings.HasSuffix(host, "/") {
+		host = host[:len(host)-1]
+	}
+
 	user := os.Getenv("SD_USER")
 	key := os.Getenv("SD_KEY")
 	return &Client{host: host, user: user, key: key}
