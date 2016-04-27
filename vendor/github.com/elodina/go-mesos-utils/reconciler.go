@@ -19,6 +19,7 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 	"github.com/mesos/mesos-go/scheduler"
+	"sync"
 	"time"
 )
 
@@ -26,17 +27,18 @@ type Reconciler struct {
 	ReconcileDelay    time.Duration
 	ReconcileMaxTries int
 
-	tasks         Tasks
+	tasks         map[string]struct{}
+	taskLock      sync.Mutex
 	reconcileTime time.Time
 	reconciles    int
 }
 
-func NewReconciler(tasks Tasks) *Reconciler {
+func NewReconciler() *Reconciler {
 	return &Reconciler{
 		ReconcileDelay:    10 * time.Second,
 		ReconcileMaxTries: 3,
+		tasks:             make(map[string]struct{}),
 		reconcileTime:     time.Unix(0, 0),
-		tasks:             tasks,
 	}
 }
 
@@ -44,40 +46,49 @@ func (r *Reconciler) ImplicitReconcile(driver scheduler.SchedulerDriver) {
 	r.reconcile(driver, true)
 }
 
-func (r *Reconciler) ExplicitReconcile(driver scheduler.SchedulerDriver) {
+func (r *Reconciler) ExplicitReconcile(taskIDs []string, driver scheduler.SchedulerDriver) {
+	r.taskLock.Lock()
+	for _, taskID := range taskIDs {
+		r.tasks[taskID] = struct{}{}
+	}
+	r.taskLock.Unlock()
+
 	r.reconcile(driver, false)
+}
+
+func (r *Reconciler) Update(status *mesos.TaskStatus) {
+	r.taskLock.Lock()
+	defer r.taskLock.Unlock()
+
+	delete(r.tasks, status.GetTaskId().GetValue())
+
+	if len(r.tasks) == 0 {
+		r.reconciles = 0
+	}
 }
 
 func (r *Reconciler) reconcile(driver scheduler.SchedulerDriver, implicit bool) {
 	if time.Now().Sub(r.reconcileTime) >= r.ReconcileDelay {
-		if !r.tasks.IsReconciling() {
-			r.reconciles = 0
-		}
+		r.taskLock.Lock()
+		defer r.taskLock.Unlock()
+
 		r.reconciles++
 		r.reconcileTime = time.Now()
 
 		if r.reconciles > r.ReconcileMaxTries {
-			for _, task := range r.tasks.GetWithFilter(func(task Task) bool {
-				return task.Data().State == TaskStateReconciling
-			}) {
-				if task.Data().TaskID != "" {
-					Logger.Info("Reconciling exceeded %d tries for task %s, sending killTask for task %s", r.ReconcileMaxTries, task.Data().ID, task.Data().TaskID)
-					driver.KillTask(util.NewTaskID(task.Data().TaskID))
-
-					task.Data().Reset()
-				}
+			for task := range r.tasks {
+				Logger.Info("Reconciling exceeded %d tries, sending killTask for task %s", r.ReconcileMaxTries, task)
+				driver.KillTask(util.NewTaskID(task))
 			}
+			r.reconciles = 0
 		} else {
 			if implicit {
 				driver.ReconcileTasks(nil)
 			} else {
 				statuses := make([]*mesos.TaskStatus, 0)
-				for _, task := range r.tasks.GetAll() {
-					if task.Data().TaskID != "" {
-						task.Data().State = TaskStateReconciling
-						Logger.Info("Reconciling %d/%d task state for id %s, task id %s", r.reconciles, r.ReconcileMaxTries, task.Data().ID, task.Data().TaskID)
-						statuses = append(statuses, util.NewTaskStatus(util.NewTaskID(task.Data().TaskID), mesos.TaskState_TASK_STAGING))
-					}
+				for task := range r.tasks {
+					Logger.Debug("Reconciling %d/%d task state for task id %s", r.reconciles, r.ReconcileMaxTries, task)
+					statuses = append(statuses, util.NewTaskStatus(util.NewTaskID(task), mesos.TaskState_TASK_STAGING))
 				}
 				driver.ReconcileTasks(statuses)
 			}

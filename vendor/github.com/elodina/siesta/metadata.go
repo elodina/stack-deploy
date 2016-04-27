@@ -16,6 +16,7 @@ limitations under the License. */
 package siesta
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -28,15 +29,20 @@ type Metadata struct {
 	metadata        map[string]map[int32]int32
 	metadataExpires map[string]time.Time
 	metadataLock    sync.RWMutex
+
+	//offset coordination part
+	offsetCoordinators    map[string]int32
+	offsetCoordinatorLock sync.RWMutex
 }
 
 func NewMetadata(connector Connector, brokers *Brokers, metadataTTL time.Duration) *Metadata {
 	return &Metadata{
-		Brokers:         brokers,
-		connector:       connector,
-		metadataTTL:     metadataTTL,
-		metadata:        make(map[string]map[int32]int32),
-		metadataExpires: make(map[string]time.Time),
+		Brokers:            brokers,
+		connector:          connector,
+		metadataTTL:        metadataTTL,
+		metadata:           make(map[string]map[int32]int32),
+		metadataExpires:    make(map[string]time.Time),
+		offsetCoordinators: make(map[string]int32),
 	}
 }
 
@@ -74,7 +80,7 @@ func (m *Metadata) TopicMetadata(topic string) (map[int32]int32, error) {
 	topicMetadata, ttl := m.topicMetadata(topic)
 
 	if topicMetadata == nil || ttl.Add(m.metadataTTL).Before(time.Now()) {
-		err := m.Refresh([]string{topic})
+		err := m.refreshIfExpired(topic, ttl)
 		if err != nil {
 			return nil, err
 		}
@@ -105,6 +111,58 @@ func (m *Metadata) PartitionsFor(topic string) ([]int32, error) {
 	return partitions, nil
 }
 
+func (m *Metadata) Refresh(topics []string) error {
+	Logger.Info("Refreshing metadata for topics %v", topics)
+	m.metadataLock.Lock()
+	defer m.metadataLock.Unlock()
+
+	return m.refresh(topics)
+}
+
+func (m *Metadata) Invalidate(topic string) {
+	m.metadataLock.Lock()
+	defer m.metadataLock.Unlock()
+
+	m.metadataExpires[topic] = time.Unix(0, 0)
+}
+
+func (m *Metadata) OffsetCoordinator(group string) (*BrokerConnection, error) {
+	m.offsetCoordinatorLock.RLock()
+	coordinatorID, exists := m.offsetCoordinators[group]
+	m.offsetCoordinatorLock.RUnlock()
+
+	if !exists {
+		err := m.refreshOffsetCoordinator(group)
+		if err != nil {
+			return nil, err
+		}
+
+		m.offsetCoordinatorLock.RLock()
+		coordinatorID = m.offsetCoordinators[group]
+		m.offsetCoordinatorLock.RUnlock()
+	}
+
+	brokerConnection := m.Brokers.Get(coordinatorID)
+	if brokerConnection == nil {
+		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorID)
+	}
+
+	return brokerConnection, nil
+}
+
+func (m *Metadata) refreshOffsetCoordinator(group string) error {
+	m.offsetCoordinatorLock.Lock()
+	defer m.offsetCoordinatorLock.Unlock()
+
+	metadata, err := m.connector.GetConsumerMetadata(group)
+	if err != nil {
+		return err
+	}
+	m.offsetCoordinators[group] = metadata.Coordinator.ID
+
+	return nil
+}
+
 func (m *Metadata) topicMetadata(topic string) (map[int32]int32, time.Time) {
 	m.metadataLock.RLock()
 	defer m.metadataLock.RUnlock()
@@ -116,11 +174,18 @@ func (m *Metadata) topicMetadata(topic string) (map[int32]int32, time.Time) {
 	return metadataCopy, m.metadataExpires[topic]
 }
 
-func (m *Metadata) Refresh(topics []string) error {
-	Logger.Info("Refreshing metadata for topics %v", topics)
+func (m *Metadata) refreshIfExpired(topic string, ttl time.Time) error {
 	m.metadataLock.Lock()
 	defer m.metadataLock.Unlock()
 
+	if ttl.Add(m.metadataTTL).Before(time.Now()) {
+		return m.refresh([]string{topic})
+	}
+
+	return nil
+}
+
+func (m *Metadata) refresh(topics []string) error {
 	topicMetadataResponse, err := m.connector.GetTopicMetadata(topics)
 	if err != nil {
 		return err
@@ -150,13 +215,6 @@ func (m *Metadata) Refresh(topics []string) error {
 	}
 
 	return nil
-}
-
-func (m *Metadata) Invalidate(topic string) {
-	m.metadataLock.Lock()
-	defer m.metadataLock.Unlock()
-
-	m.metadataExpires[topic] = time.Unix(0, 0)
 }
 
 type Int32Slice []int32

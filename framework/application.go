@@ -59,7 +59,7 @@ type Application struct {
 	Dependencies        []string          `yaml:"dependencies,omitempty"`
 	Docker              *Docker           `yaml:"docker,omitempty"`
 	StartTime           string            `yaml:"start_time,omitempty"`
-	TimeSchedule        string            `yaml:"time_schedule",omitempty"`
+	TimeSchedule        string            `yaml:"time_schedule,omitempty"`
 
 	BeforeScheduler []string `yaml:"before_scheduler,omitempty"`
 	AfterScheduler  []string `yaml:"after_scheduler,omitempty"`
