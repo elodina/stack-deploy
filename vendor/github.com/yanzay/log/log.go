@@ -5,11 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 )
 
-type logLevel int
+type LogLevel int
 
-func (ll logLevel) String() string {
+func (ll LogLevel) String() string {
 	switch ll {
 	case LevelTrace:
 		return "trace"
@@ -28,7 +29,7 @@ func (ll logLevel) String() string {
 	return "unknown"
 }
 
-func (ll *logLevel) Set(value string) error {
+func (ll *LogLevel) Set(value string) error {
 	switch value {
 	case "trace":
 		*ll = LevelTrace
@@ -51,7 +52,7 @@ func (ll *logLevel) Set(value string) error {
 
 const (
 	// LevelTrace is most detailed logging
-	LevelTrace logLevel = 1 + iota
+	LevelTrace LogLevel = 1 + iota
 	// LevelDebug is level for debugging logs
 	LevelDebug
 	// LevelInfo is level for info logs
@@ -75,6 +76,14 @@ func init() {
 	flag.Var(&Level, "log-level", "Log level: trace|debug|info|warning|error|fatal")
 }
 
+func AddWriter(writer io.Writer) {
+	if Writer == nil {
+		Writer = writer
+	} else {
+		Writer = io.MultiWriter(Writer, writer)
+	}
+}
+
 func printString(s string) {
 	_, err := Writer.Write([]byte(s))
 	if err != nil {
@@ -82,13 +91,14 @@ func printString(s string) {
 	}
 }
 
-func lprint(level logLevel, value interface{}) {
+func lprint(level LogLevel, value interface{}) {
 	if level >= Level {
-		printString(fmt.Sprint(value))
+		prefix := fmt.Sprintf("[%s] ", strings.ToUpper(level.String()))
+		printString(prefix + fmt.Sprint(value))
 	}
 }
 
-func lprintf(level logLevel, format string, params ...interface{}) {
+func lprintf(level LogLevel, format string, params ...interface{}) {
 	lprint(level, fmt.Sprintf(format, params...))
 }
 
@@ -135,7 +145,7 @@ func Errorf(format string, params ...interface{}) { lprintf(LevelError, format, 
 // Fatal logs fatal error and panic
 func Fatal(value interface{}) {
 	str := fmt.Sprint(value)
-	printString(str)
+	printString("[FATAL] " + str)
 	panic(str)
 }
 

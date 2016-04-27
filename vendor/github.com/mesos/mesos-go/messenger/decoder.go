@@ -20,8 +20,11 @@ import (
 )
 
 const (
-	DefaultReadTimeout  = 5 * time.Second
-	DefaultWriteTimeout = 5 * time.Second
+	// writeFlushPeriod is the amount of time we're willing to wait for a single
+	// response buffer to be fully written to the underlying TCP connection; after
+	// this amount of time the remaining bytes of the response are discarded. see
+	// responseWriter().
+	writeFlushPeriod = 30 * time.Second
 )
 
 type decoderID int32
@@ -37,12 +40,7 @@ func (did *decoderID) next() decoderID {
 var (
 	errHijackFailed = errors.New("failed to hijack http connection")
 	did             decoderID // decoder ID counter
-	closedChan      = make(chan struct{})
 )
-
-func init() {
-	close(closedChan)
-}
 
 type Decoder interface {
 	Requests() <-chan *Request
@@ -75,9 +73,9 @@ type httpDecoder struct {
 	cancelGuard  sync.Mutex
 	readTimeout  time.Duration
 	writeTimeout time.Duration
-	idtag        string          // useful for debugging
-	sendError    func(err error) // abstraction for error handling
-	outCh        chan *bytes.Buffer
+	idtag        string             // useful for debugging
+	sendError    func(err error)    // abstraction for error handling
+	outCh        chan *bytes.Buffer // chan of responses to be written to the connection
 }
 
 // DecodeHTTP hijacks an HTTP server connection and generates mesos libprocess HTTP
@@ -93,8 +91,8 @@ func DecodeHTTP(w http.ResponseWriter, r *http.Request) Decoder {
 		req:          r,
 		shouldQuit:   make(chan struct{}),
 		forceQuit:    make(chan struct{}),
-		readTimeout:  DefaultReadTimeout,
-		writeTimeout: DefaultWriteTimeout,
+		readTimeout:  ReadTimeout,
+		writeTimeout: WriteTimeout,
 		idtag:        id.String(),
 		outCh:        make(chan *bytes.Buffer),
 	}
@@ -135,27 +133,13 @@ func (d *httpDecoder) Cancel(graceful bool) {
 
 func (d *httpDecoder) run(res http.ResponseWriter) {
 	defer func() {
-		close(d.outCh)
+		close(d.outCh) // we're finished generating response objects
 		log.V(2).Infoln(d.idtag + "run: terminating")
 	}()
 
-	go func() {
-		for buf := range d.outCh {
-			select {
-			case <-d.forceQuit:
-				return
-			default:
-			}
-			//TODO(jdef) I worry about this busy-looping
-			for buf.Len() > 0 {
-				d.tryFlushResponse(buf)
-			}
-		}
-	}()
-
-	var next httpState
-	for state := d.bootstrapState(res); state != nil; state = next {
-		next = state(d)
+	for state := d.bootstrapState(res); state != nil; {
+		next := state(d)
+		state = next
 	}
 }
 
@@ -217,7 +201,7 @@ func (d *httpDecoder) buildResponseEntity(resp *Response) *bytes.Buffer {
 
 // updateForRequest updates the chunked and kalive fields of the decoder to align
 // with the header values of the request
-func (d *httpDecoder) updateForRequest() {
+func (d *httpDecoder) updateForRequest(bootstrapping bool) {
 	// check "Transfer-Encoding" for "chunked"
 	d.chunked = false
 	for _, v := range d.req.Header["Transfer-Encoding"] {
@@ -227,11 +211,16 @@ func (d *httpDecoder) updateForRequest() {
 		}
 	}
 	if !d.chunked && d.req.ContentLength < 0 {
-		// strongly suspect that Go's internal net/http lib is stripping
-		// the Transfer-Encoding header from the initial request, so this
-		// workaround makes a very mesos-specific assumption: an unknown
-		// Content-Length indicates a chunked stream.
-		d.chunked = true
+		if bootstrapping {
+			// strongly suspect that Go's internal net/http lib is stripping
+			// the Transfer-Encoding header from the initial request, so this
+			// workaround makes a very mesos-specific assumption: an unknown
+			// Content-Length indicates a chunked stream.
+			d.chunked = true
+		} else {
+			// via https://tools.ietf.org/html/rfc7230#section-3.3.2
+			d.req.ContentLength = 0
+		}
 	}
 
 	// check "Connection" for "Keep-Alive"
@@ -358,7 +347,8 @@ func limit(r *bufio.Reader, limit int64) *io.LimitedReader {
 // is ready to be hijacked at this point.
 func (d *httpDecoder) bootstrapState(res http.ResponseWriter) httpState {
 	log.V(2).Infoln(d.idtag + "bootstrap-state")
-	d.updateForRequest()
+
+	d.updateForRequest(true)
 
 	// hijack
 	hj, ok := res.(http.Hijacker)
@@ -373,9 +363,42 @@ func (d *httpDecoder) bootstrapState(res http.ResponseWriter) httpState {
 		d.sendError(errHijackFailed)
 		return terminateState
 	}
+
 	d.rw = rw
 	d.con = c
+
+	go d.responseWriter()
 	return d.readBodyContent()
+}
+
+func (d *httpDecoder) responseWriter() {
+	defer func() {
+		log.V(3).Infoln(d.idtag + "response-writer: closing connection")
+		d.con.Close()
+	}()
+	for buf := range d.outCh {
+		//TODO(jdef) I worry about this busy-looping
+
+		// write & flush the buffer until there's nothing left in it, or else
+		// we exceed the write/flush period.
+		now := time.Now()
+		for buf.Len() > 0 && time.Since(now) < writeFlushPeriod {
+			select {
+			case <-d.forceQuit:
+				return
+			default:
+			}
+			d.tryFlushResponse(buf)
+		}
+		if buf.Len() > 0 {
+			//TODO(jdef) should we abort the entire connection instead? a partially written
+			// response doesn't do anyone any good. That said, real libprocess agents don't
+			// really care about the response channel anyway - the entire system is fire and
+			// forget. So I've decided to err on the side that we might lose response bytes
+			// in favor of completely reading the connection request stream before we terminate.
+			log.Errorln(d.idtag + "failed to fully flush output buffer within write-flush period")
+		}
+	}
 }
 
 type body struct {
@@ -610,6 +633,6 @@ func readHeaderState(d *httpDecoder) httpState {
 			log.V(2).Infoln(d.idtag+"set content length", r.ContentLength)
 		}
 	}
-	d.updateForRequest()
+	d.updateForRequest(false)
 	return d.readBodyContent()
 }

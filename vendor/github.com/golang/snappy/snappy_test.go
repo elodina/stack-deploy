@@ -459,8 +459,13 @@ func TestDecodeLengthOffset(t *testing.T) {
 	}
 }
 
+const (
+	goldenText       = "testdata/Mark.Twain-Tom.Sawyer.txt"
+	goldenCompressed = goldenText + ".rawsnappy"
+)
+
 func TestDecodeGoldenInput(t *testing.T) {
-	src, err := ioutil.ReadFile("testdata/pi.txt.rawsnappy")
+	src, err := ioutil.ReadFile(goldenCompressed)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -468,7 +473,7 @@ func TestDecodeGoldenInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	want, err := ioutil.ReadFile("testdata/pi.txt")
+	want, err := ioutil.ReadFile(goldenText)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -478,17 +483,60 @@ func TestDecodeGoldenInput(t *testing.T) {
 }
 
 func TestEncodeGoldenInput(t *testing.T) {
-	src, err := ioutil.ReadFile("testdata/pi.txt")
+	src, err := ioutil.ReadFile(goldenText)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	got := Encode(nil, src)
-	want, err := ioutil.ReadFile("testdata/pi.txt.rawsnappy")
+	want, err := ioutil.ReadFile(goldenCompressed)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	if err := cmp(got, want); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestExtendMatchGoldenInput(t *testing.T) {
+	src, err := ioutil.ReadFile(goldenText)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	for i, tc := range extendMatchGoldenTestCases {
+		got := extendMatch(src, tc.i, tc.j)
+		if got != tc.want {
+			t.Errorf("test #%d: i, j = %5d, %5d: got %5d (= j + %6d), want %5d (= j + %6d)",
+				i, tc.i, tc.j, got, got-tc.j, tc.want, tc.want-tc.j)
+		}
+	}
+}
+
+func TestExtendMatch(t *testing.T) {
+	// ref is a simple, reference implementation of extendMatch.
+	ref := func(src []byte, i, j int) int {
+		for ; j < len(src) && src[i] == src[j]; i, j = i+1, j+1 {
+		}
+		return j
+	}
+
+	nums := []int{0, 1, 2, 7, 8, 9, 29, 30, 31, 32, 33, 34, 38, 39, 40}
+	for yIndex := 40; yIndex > 30; yIndex-- {
+		xxx := bytes.Repeat([]byte("x"), 40)
+		if yIndex < len(xxx) {
+			xxx[yIndex] = 'y'
+		}
+		for _, i := range nums {
+			for _, j := range nums {
+				if i >= j {
+					continue
+				}
+				got := extendMatch(xxx, i, j)
+				want := ref(xxx, i, j)
+				if got != want {
+					t.Errorf("yIndex=%d, i=%d, j=%d: got %d, want %d", yIndex, i, j, got, want)
+				}
+			}
+		}
 	}
 }
 
@@ -532,6 +580,7 @@ func TestSameEncodingAsCppLongFiles(t *testing.T) {
 	if msg := skipTestSameEncodingAsCpp(); msg != "" {
 		t.Skip(msg)
 	}
+	failed := false
 	for i, tf := range testFiles {
 		if err := downloadBenchmarkFiles(t, tf.filename); err != nil {
 			t.Fatalf("failed to download testdata: %s", err)
@@ -542,7 +591,13 @@ func TestSameEncodingAsCppLongFiles(t *testing.T) {
 		}
 		if err := runTestSameEncodingAsCpp(data); err != nil {
 			t.Errorf("i=%d: %v", i, err)
+			failed = true
 		}
+	}
+	if failed {
+		t.Errorf("was the snappytool program built against the C++ snappy library version " +
+			"d53de187 or later, commited on 2016-04-05? See " +
+			"https://github.com/google/snappy/commit/d53de18799418e113e44444252a39b12a0e4e0cc")
 	}
 }
 
@@ -595,7 +650,7 @@ func TestSlowForwardCopyOverrun(t *testing.T) {
 // incompressible and the second half is very compressible. The encoded form's
 // length should be closer to 50% of the original length than 100%.
 func TestEncodeNoiseThenRepeats(t *testing.T) {
-	for _, origLen := range []int{32 * 1024, 256 * 1024, 2048 * 1024} {
+	for _, origLen := range []int{256 * 1024, 2048 * 1024} {
 		src := make([]byte, origLen)
 		rng := rand.New(rand.NewSource(1))
 		firstHalf, secondHalf := src[:origLen/2], src[origLen/2:]
@@ -658,6 +713,10 @@ func TestWriterGoldenOutput(t *testing.T) {
 	// bytes. Instead, we could do it shorter, in 5 bytes: a 3-byte tagCopy2
 	// (of length 60) and a 2-byte tagCopy1 (of length 7).
 	w.Write(bytes.Repeat([]byte{'B'}, 68))
+	w.Write([]byte("efC"))                 // Not compressible.
+	w.Write(bytes.Repeat([]byte{'C'}, 20)) // Compressible.
+	w.Write(bytes.Repeat([]byte{'B'}, 20)) // Compressible.
+	w.Write([]byte("g"))                   // Not compressible.
 	w.Flush()
 
 	got := buf.String()
@@ -669,19 +728,128 @@ func TestWriterGoldenOutput(t *testing.T) {
 		"\x00\x11\x00\x00", // Compressed chunk, 17 bytes long (including 4 byte checksum).
 		"\x5f\xeb\xf2\x10", // Checksum.
 		"\x96\x01",         // Compressed payload: Uncompressed length (varint encoded): 150.
-		"\x00\x41",         // Compressed payload: tagLiteral, length=1, "A".
+		"\x00\x41",         // Compressed payload: tagLiteral, length=1,  "A".
 		"\xfe\x01\x00",     // Compressed payload: tagCopy2,   length=64, offset=1.
 		"\xfe\x01\x00",     // Compressed payload: tagCopy2,   length=64, offset=1.
 		"\x52\x01\x00",     // Compressed payload: tagCopy2,   length=21, offset=1.
-		"\x00\x0c\x00\x00", // Compressed chunk, 12 bytes long (including 4 byte checksum).
-		"\x27\x50\xe4\x4e", // Checksum.
-		"\x44",             // Compressed payload: Uncompressed length (varint encoded): 68.
-		"\x00\x42",         // Compressed payload: tagLiteral, length=1, "B".
+		"\x00\x18\x00\x00", // Compressed chunk, 24 bytes long (including 4 byte checksum).
+		"\x30\x85\x69\xeb", // Checksum.
+		"\x70",             // Compressed payload: Uncompressed length (varint encoded): 112.
+		"\x00\x42",         // Compressed payload: tagLiteral, length=1,  "B".
 		"\xee\x01\x00",     // Compressed payload: tagCopy2,   length=60, offset=1.
-		"\x0d\x01",         // Compressed payload: tagCopy1,   length=7, offset=1.
+		"\x0d\x01",         // Compressed payload: tagCopy1,   length=7,  offset=1.
+		"\x08\x65\x66\x43", // Compressed payload: tagLiteral, length=3,  "efC".
+		"\x4e\x01\x00",     // Compressed payload: tagCopy2,   length=20, offset=1.
+		"\x4e\x5a\x00",     // Compressed payload: tagCopy2,   length=20, offset=90.
+		"\x00\x67",         // Compressed payload: tagLiteral, length=1,  "g".
 	}, "")
 	if got != want {
 		t.Fatalf("\ngot:  % x\nwant: % x", got, want)
+	}
+}
+
+func TestEmitLiteral(t *testing.T) {
+	testCases := []struct {
+		length int
+		want   string
+	}{
+		{1, "\x00"},
+		{2, "\x04"},
+		{59, "\xe8"},
+		{60, "\xec"},
+		{61, "\xf0\x3c"},
+		{62, "\xf0\x3d"},
+		{254, "\xf0\xfd"},
+		{255, "\xf0\xfe"},
+		{256, "\xf0\xff"},
+		{257, "\xf4\x00\x01"},
+		{65534, "\xf4\xfd\xff"},
+		{65535, "\xf4\xfe\xff"},
+		{65536, "\xf4\xff\xff"},
+	}
+
+	dst := make([]byte, 70000)
+	nines := bytes.Repeat([]byte{0x99}, 65536)
+	for _, tc := range testCases {
+		lit := nines[:tc.length]
+		n := emitLiteral(dst, lit)
+		if !bytes.HasSuffix(dst[:n], lit) {
+			t.Errorf("length=%d: did not end with that many literal bytes", tc.length)
+			continue
+		}
+		got := string(dst[:n-tc.length])
+		if got != tc.want {
+			t.Errorf("length=%d:\ngot  % x\nwant % x", tc.length, got, tc.want)
+			continue
+		}
+	}
+}
+
+func TestEmitCopy(t *testing.T) {
+	testCases := []struct {
+		offset int
+		length int
+		want   string
+	}{
+		{8, 04, "\x01\x08"},
+		{8, 11, "\x1d\x08"},
+		{8, 12, "\x2e\x08\x00"},
+		{8, 13, "\x32\x08\x00"},
+		{8, 59, "\xea\x08\x00"},
+		{8, 60, "\xee\x08\x00"},
+		{8, 61, "\xf2\x08\x00"},
+		{8, 62, "\xf6\x08\x00"},
+		{8, 63, "\xfa\x08\x00"},
+		{8, 64, "\xfe\x08\x00"},
+		{8, 65, "\xee\x08\x00\x05\x08"},
+		{8, 66, "\xee\x08\x00\x09\x08"},
+		{8, 67, "\xee\x08\x00\x0d\x08"},
+		{8, 68, "\xfe\x08\x00\x01\x08"},
+		{8, 69, "\xfe\x08\x00\x05\x08"},
+		{8, 80, "\xfe\x08\x00\x3e\x08\x00"},
+
+		{256, 04, "\x21\x00"},
+		{256, 11, "\x3d\x00"},
+		{256, 12, "\x2e\x00\x01"},
+		{256, 13, "\x32\x00\x01"},
+		{256, 59, "\xea\x00\x01"},
+		{256, 60, "\xee\x00\x01"},
+		{256, 61, "\xf2\x00\x01"},
+		{256, 62, "\xf6\x00\x01"},
+		{256, 63, "\xfa\x00\x01"},
+		{256, 64, "\xfe\x00\x01"},
+		{256, 65, "\xee\x00\x01\x25\x00"},
+		{256, 66, "\xee\x00\x01\x29\x00"},
+		{256, 67, "\xee\x00\x01\x2d\x00"},
+		{256, 68, "\xfe\x00\x01\x21\x00"},
+		{256, 69, "\xfe\x00\x01\x25\x00"},
+		{256, 80, "\xfe\x00\x01\x3e\x00\x01"},
+
+		{2048, 04, "\x0e\x00\x08"},
+		{2048, 11, "\x2a\x00\x08"},
+		{2048, 12, "\x2e\x00\x08"},
+		{2048, 13, "\x32\x00\x08"},
+		{2048, 59, "\xea\x00\x08"},
+		{2048, 60, "\xee\x00\x08"},
+		{2048, 61, "\xf2\x00\x08"},
+		{2048, 62, "\xf6\x00\x08"},
+		{2048, 63, "\xfa\x00\x08"},
+		{2048, 64, "\xfe\x00\x08"},
+		{2048, 65, "\xee\x00\x08\x12\x00\x08"},
+		{2048, 66, "\xee\x00\x08\x16\x00\x08"},
+		{2048, 67, "\xee\x00\x08\x1a\x00\x08"},
+		{2048, 68, "\xfe\x00\x08\x0e\x00\x08"},
+		{2048, 69, "\xfe\x00\x08\x12\x00\x08"},
+		{2048, 80, "\xfe\x00\x08\x3e\x00\x08"},
+	}
+
+	dst := make([]byte, 1024)
+	for _, tc := range testCases {
+		n := emitCopy(dst, tc.offset, tc.length)
+		got := string(dst[:n])
+		if got != tc.want {
+			t.Errorf("offset=%d, length=%d:\ngot  % x\nwant % x", tc.offset, tc.length, got, tc.want)
+		}
 	}
 }
 
@@ -1129,3 +1297,16 @@ func Benchmark_ZFlat8(b *testing.B)  { benchFile(b, 8, false) }
 func Benchmark_ZFlat9(b *testing.B)  { benchFile(b, 9, false) }
 func Benchmark_ZFlat10(b *testing.B) { benchFile(b, 10, false) }
 func Benchmark_ZFlat11(b *testing.B) { benchFile(b, 11, false) }
+
+func BenchmarkExtendMatch(b *testing.B) {
+	src, err := ioutil.ReadFile(goldenText)
+	if err != nil {
+		b.Fatalf("ReadFile: %v", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, tc := range extendMatchGoldenTestCases {
+			extendMatch(src, tc.i, tc.j)
+		}
+	}
+}
