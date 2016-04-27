@@ -349,7 +349,7 @@ func (a *Application) createApplication(context *StackContext, mesos MesosState)
 	labels := a.getLabelsFromContext(context)
 	application := &marathon.Application{
 		ID:           a.ID,
-		Cmd:          &launchCommand,
+		Cmd:          launchCommand,
 		Args:         &a.Args,
 		Env:          &env,
 		Instances:    &instances,
@@ -379,12 +379,16 @@ func (a *Application) getLabelsFromContext(context *StackContext) map[string]str
 	return labels
 }
 
-func (a *Application) getLaunchCommand() string {
+func (a *Application) getLaunchCommand() *string {
 	cmd := a.LaunchCommand
 	for k, v := range a.Scheduler {
 		cmd += fmt.Sprintf(" --%s %s", k, fmt.Sprint(v))
 	}
-	return cmd
+
+	if cmd == "" {
+		return nil
+	}
+	return &cmd
 }
 
 func (a *Application) getEnv(context *StackContext) map[string]string {
