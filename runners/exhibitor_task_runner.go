@@ -101,7 +101,7 @@ func (emc *ExhibitorMesosClient) Add(params map[string]string) (*exhibitorCluste
 	values := url.Values{}
 	for k, v := range params {
 		switch k {
-		case "id", "cpu", "mem", "constraints", "configchangebackoff", "port":
+		case "id", "cpu", "mem", "constraints", "configchangebackoff", "port", "docker":
 			values.Set(k, v)
 		}
 	}
@@ -123,7 +123,7 @@ func (emc *ExhibitorMesosClient) Update(params map[string]string) (*exhibitorClu
 	values := url.Values{}
 	for k, v := range params {
 		switch k {
-		case "cpu", "mem", "constraints", "configchangebackoff", "port", "timeout":
+		case "cpu", "mem", "constraints", "configchangebackoff", "port", "docker", "timeout":
 		default:
 			values.Set(k, v)
 		}
