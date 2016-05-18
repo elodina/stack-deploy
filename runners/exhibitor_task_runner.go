@@ -72,7 +72,7 @@ func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.StackContext,
 	serversMap := make(map[string]string)
 
 	for _, server := range response.Cluster {
-		hostname := fmt.Sprintf("%s:2181", server.Config.Hostname)
+		hostname := fmt.Sprintf("%s:%s", server.Config.Hostname, etr.getClientPort(server))
 
 		serversMap[server.Id] = hostname
 		servers = append(servers, hostname)
@@ -84,6 +84,15 @@ func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.StackContext,
 
 	context.SetStackVariable(fmt.Sprintf("%s.zkConnect", application.ID), strings.Join(servers, ","))
 	return nil
+}
+
+func (etr *ExhibitorTaskRunner) getClientPort(server *exhibitorServer) string {
+	port, exists := server.Config.SharedConfigOverride["client-port"]
+	if exists {
+		return port
+	}
+
+	return "2181"
 }
 
 type ExhibitorMesosClient struct {
