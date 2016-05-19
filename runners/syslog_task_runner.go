@@ -28,7 +28,7 @@ import (
 
 type SyslogTaskRunner struct{}
 
-func (str *SyslogTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (str *SyslogTaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -38,7 +38,7 @@ func (str *SyslogTaskRunner) FillContext(context *framework.StackContext, applic
 	return nil
 }
 
-func (str *SyslogTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (str *SyslogTaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewSyslogMesosClient(api)

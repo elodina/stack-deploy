@@ -34,3 +34,7 @@ var ErrApplicationDoesNotExist = errors.New("Application does not exist")
 var ErrTaskNotRunning = errors.New("Task is not running")
 
 var ErrHealthcheckNotPassing = errors.New("Task healthcheck is not passing")
+
+var ErrStackStateExists = errors.New("Stack state already exists")
+
+var ErrStackStateDoesNotExist = errors.New("Stack state does not exist")

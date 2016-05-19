@@ -8,13 +8,12 @@ import (
 	"time"
 
 	"errors"
-	marathon "github.com/gambol99/go-marathon"
 	"github.com/gocql/gocql"
 	yaml "gopkg.in/yaml.v2"
 )
 
 type Runner interface {
-	Run(*RunRequest, *StackContext, marathon.Marathon, Scheduler, StateStorage) (*StackContext, error)
+	Run(*RunRequest, *RunContext) error
 	GetStack() *Stack
 }
 

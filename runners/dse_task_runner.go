@@ -30,7 +30,7 @@ import (
 
 type DSETaskRunner struct{}
 
-func (dtr *DSETaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (dtr *DSETaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -40,7 +40,7 @@ func (dtr *DSETaskRunner) FillContext(context *framework.StackContext, applicati
 	return nil
 }
 
-func (dtr *DSETaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (dtr *DSETaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewDSEMesosClient(api)
@@ -57,7 +57,7 @@ func (dtr *DSETaskRunner) RunTask(context *framework.StackContext, application *
 	return dtr.fillTaskContext(context, application, response)
 }
 
-func (dtr *DSETaskRunner) fillTaskContext(context *framework.StackContext, application *framework.Application, response map[string]interface{}) error {
+func (dtr *DSETaskRunner) fillTaskContext(context *framework.Variables, application *framework.Application, response map[string]interface{}) error {
 	servers := make([]string, 0)
 	serversMap := make(map[string]string)
 

@@ -172,21 +172,22 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		context := NewContext()
+		variables := NewVariables()
 		for varName, varValue := range ts.globalVariables {
-			context.SetGlobalVariable(varName, varValue)
+			variables.SetGlobalVariable(varName, varValue)
 		}
 		for varName, varValue := range runRequest.Variables {
-			context.SetArbitraryVariable(varName, varValue)
+			variables.SetArbitraryVariable(varName, varValue)
 		}
 
-		context, err = ts.runStack(runRequest, context, ts.storage)
+		context := NewRunContext(variables)
+		err = ts.runStack(runRequest, context, ts.storage)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		Logger.Info("Done running stack %s: %s", stackName, context.String())
+		Logger.Info("Done running stack %s: %s", stackName, context.Variables.String())
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -334,22 +335,38 @@ func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(request *RunRequest, context *StackContext, storage Storage) (*StackContext, error) {
+func (ts *StackDeployServer) runStack(request *RunRequest, context *RunContext, storage Storage) error {
 	runner, err := storage.GetStackRunner(request.Name)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if request.Zone != "" {
 		layers, err := storage.GetLayersStack(request.Zone)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		layers.Merge(runner.GetStack())
 		runner = layers.GetRunner()
 	}
 
-	Logger.Info("Running stack %s in zone '%s' and context %s", request.Name, request.Zone, context)
-	return runner.Run(request, context, ts.marathonClient, ts.scheduler, ts.stateStorage)
+	Logger.Info("Running stack %s in zone '%s' and variables %s", request.Name, request.Zone, context.Variables)
+	context.StackName = request.Name
+	context.Zone = request.Zone
+	context.Marathon = ts.marathonClient
+	context.Scheduler = ts.scheduler
+	context.StateStorage = ts.stateStorage
+	err = context.StateStorage.SaveStackStatus(context.StackName, context.Zone, StackStatusStaging)
+	if err != nil {
+		return err
+	}
+
+	err = runner.Run(request, context)
+	if err != nil {
+		_ = context.StateStorage.SaveStackStatus(context.StackName, context.Zone, StackStatusFailed)
+	} else {
+		err = context.StateStorage.SaveStackStatus(context.StackName, context.Zone, StackStatusRunning)
+	}
+	return err
 }
 
 func layerToInt(layer string) (int, error) {

@@ -17,18 +17,18 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-type ApplicationState int
+type ApplicationStatus int
 
 const (
-	StateStaging ApplicationState = iota
-	StateRunning
-	StateFailed
+	ApplicationStatusStaging ApplicationStatus = iota
+	ApplicationStatusRunning
+	ApplicationStatusFailed
 )
 
-var ApplicationStates = map[ApplicationState]string{
-	StateStaging: "STAGING",
-	StateRunning: "RUNNING",
-	StateFailed:  "FAILED",
+var ApplicationStatuses = map[ApplicationStatus]string{
+	ApplicationStatusStaging: "STAGING",
+	ApplicationStatusRunning: "RUNNING",
+	ApplicationStatusFailed:  "FAILED",
 }
 
 // exposed for testing purposes
@@ -66,8 +66,6 @@ type Application struct {
 	BeforeTask      []string `yaml:"before_task,omitempty"`
 	AfterTask       []string `yaml:"after_task,omitempty"`
 	AfterTasks      []string `yaml:"after_tasks,omitempty"`
-
-	stateStorage StateStorage
 }
 
 func (a *Application) Validate() error {
@@ -110,10 +108,10 @@ func (a *Application) Validate() error {
 	return nil
 }
 
-func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationState) bool {
+func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationStatus) bool {
 	for _, dependency := range a.Dependencies {
-		state, ok := runningApps[dependency]
-		if !ok || state != StateRunning {
+		status, ok := runningApps[dependency]
+		if !ok || status != ApplicationStatusRunning {
 			Logger.Debug("Application %s has unsatisfied dependency %s", a.ID, dependency)
 			return false
 		}
@@ -122,11 +120,11 @@ func (a *Application) IsDependencySatisfied(runningApps map[string]ApplicationSt
 	return true
 }
 
-func (a *Application) Run(context *StackContext, client marathon.Marathon, scheduler Scheduler, stateStorage StateStorage, maxWait int) error {
+func (a *Application) Run(context *RunContext, maxWait int) error {
 	Logger.Debug("Running application: \n%s", a)
-	a.stateStorage = stateStorage
-	a.resolveVariables(context)
-	err := ensureVariablesResolved(context, a.BeforeScheduler, a.LaunchCommand, a.Scheduler, a.Args, a.Env)
+	variables := context.Variables
+	a.resolveVariables(variables)
+	err := ensureVariablesResolved(variables, a.BeforeScheduler, a.LaunchCommand, a.Scheduler, a.Args, a.Env)
 	if err != nil {
 		return err
 	}
@@ -136,19 +134,19 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 	}
 
 	if _, exists := MesosTaskRunners[a.Type]; exists {
-		err := a.runMesos(scheduler)
+		err := a.runMesos(context)
 		if err != nil {
 			return err
 		}
 	} else {
-		err := a.runMarathon(context, client, scheduler, stateStorage, maxWait)
+		err := a.runMarathon(context, maxWait)
 		if err != nil {
 			return err
 		}
 	}
 
-	a.resolveVariables(context)
-	err = ensureVariablesResolved(context, a.AfterScheduler)
+	a.resolveVariables(variables)
+	err = ensureVariablesResolved(variables, a.AfterScheduler)
 	if err != nil {
 		return err
 	}
@@ -159,15 +157,15 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 
 	runner := TaskRunners[a.Type]
 	if runner != nil {
-		err = a.fillContext(context, runner, client)
+		err = a.fillContext(variables, runner, context.Marathon)
 		if err != nil {
 			return err
 		}
-		Logger.Info("Context:\n%s", context)
+		Logger.Info("Variables:\n%s", variables)
 
 		for _, task := range a.Tasks {
-			a.resolveVariables(context)
-			err = ensureVariablesResolved(context, a.BeforeTask, task)
+			a.resolveVariables(variables)
+			err = ensureVariablesResolved(variables, a.BeforeTask, task)
 			if err != nil {
 				return err
 			}
@@ -177,13 +175,13 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 			}
 
 			Logger.Info("Running task %s", task.Key)
-			err = runner.RunTask(context, a, MapSliceToMap(task.Value.(yaml.MapSlice)))
+			err = runner.RunTask(variables, a, MapSliceToMap(task.Value.(yaml.MapSlice)))
 			if err != nil {
 				return err
 			}
 
-			a.resolveVariables(context)
-			err = ensureVariablesResolved(context, a.AfterTask)
+			a.resolveVariables(variables)
+			err = ensureVariablesResolved(variables, a.AfterTask)
 			if err != nil {
 				return err
 			}
@@ -196,22 +194,22 @@ func (a *Application) Run(context *StackContext, client marathon.Marathon, sched
 		}
 	}
 
-	a.resolveVariables(context)
-	err = ensureVariablesResolved(context, a.AfterTasks)
+	a.resolveVariables(variables)
+	err = ensureVariablesResolved(variables, a.AfterTasks)
 	if err != nil {
 		return err
 	}
 	return a.executeCommands(a.AfterTasks, fmt.Sprintf("%s_after_tasks.sh", a.ID))
 }
 
-func (a *Application) runMarathon(context *StackContext, client marathon.Marathon, scheduler Scheduler, stateStorage StateStorage, maxWait int) error {
-	application := a.createApplication(context, scheduler.GetMesosState())
-	_, err := client.CreateApplication(application)
+func (a *Application) runMarathon(context *RunContext, maxWait int) error {
+	application := a.createApplication(context.Variables, context.Scheduler.GetMesosState())
+	_, err := context.Marathon.CreateApplication(application)
 	if err != nil {
 		return err
 	}
 
-	err = a.awaitRunningAndHealthy(client, maxWait)
+	err = a.awaitRunningAndHealthy(context.Marathon, maxWait)
 	if err != nil {
 		return err
 	}
@@ -219,23 +217,15 @@ func (a *Application) runMarathon(context *StackContext, client marathon.Maratho
 	return nil
 }
 
-func (a *Application) runMesos(scheduler Scheduler) error {
-	status := <-scheduler.RunApplication(a)
+func (a *Application) runMesos(context *RunContext) error {
+	status := <-context.Scheduler.RunApplication(a)
 	if status.Error != nil {
 		return status.Error
 	}
 	return nil
 }
 
-func (a *Application) storeTaskState(task map[string]string, context *StackContext) error {
-	err := a.stateStorage.SaveTaskState(task, context.All(), StateRunning)
-	if err != nil {
-		Logger.Error(err)
-	}
-	return err
-}
-
-func (a *Application) resolveVariables(context *StackContext) {
+func (a *Application) resolveVariables(context *Variables) {
 	a.Lock()
 	defer a.Unlock()
 	for k, v := range context.All() {
@@ -285,7 +275,7 @@ func (a *Application) executeCommands(commands []string, fileName string) error 
 	return cmd.Run()
 }
 
-func (a *Application) resolveCmdVariables(commands []string, context *StackContext) {
+func (a *Application) resolveCmdVariables(commands []string, context *Variables) {
 	for k, v := range context.All() {
 		for idx, cmd := range commands {
 			commands[idx] = strings.Replace(cmd, fmt.Sprintf("${%s}", k), v, -1)
@@ -293,7 +283,7 @@ func (a *Application) resolveCmdVariables(commands []string, context *StackConte
 	}
 }
 
-func (a *Application) fillContext(context *StackContext, runner TaskRunner, client marathon.Marathon) error {
+func (a *Application) fillContext(context *Variables, runner TaskRunner, client marathon.Marathon) error {
 	tasks, err := client.Tasks(a.ID)
 	if err != nil {
 		return err
@@ -339,7 +329,7 @@ func (a *Application) checkRunningAndHealthy(client marathon.Marathon) error {
 	return nil
 }
 
-func (a *Application) createApplication(context *StackContext, mesos MesosState) *marathon.Application {
+func (a *Application) createApplication(context *Variables, mesos MesosState) *marathon.Application {
 	launchCommand := a.getLaunchCommand()
 	env := a.getEnv(context)
 	instances := a.GetInstances(mesos)
@@ -367,7 +357,7 @@ func (a *Application) createApplication(context *StackContext, mesos MesosState)
 	return application
 }
 
-func (a *Application) getLabelsFromContext(context *StackContext) map[string]string {
+func (a *Application) getLabelsFromContext(context *Variables) map[string]string {
 	keys := []string{"zone", "stack"}
 	labels := make(map[string]string)
 	for _, key := range keys {
@@ -391,7 +381,7 @@ func (a *Application) getLaunchCommand() *string {
 	return &cmd
 }
 
-func (a *Application) getEnv(context *StackContext) map[string]string {
+func (a *Application) getEnv(context *Variables) map[string]string {
 	env := make(map[string]string)
 	labelStrings := make([]string, 0)
 	for key, val := range a.getLabelsFromContext(context) {
@@ -522,7 +512,7 @@ func (a *Application) String() string {
 	return string(yml)
 }
 
-func ensureVariablesResolved(context *StackContext, values ...interface{}) error {
+func ensureVariablesResolved(context *Variables, values ...interface{}) error {
 	for _, value := range values {
 		switch v := value.(type) {
 		case string:
@@ -561,7 +551,7 @@ func ensureVariablesResolved(context *StackContext, values ...interface{}) error
 	return nil
 }
 
-func ensureStringVariableResolved(context *StackContext, value string) error {
+func ensureStringVariableResolved(context *Variables, value string) error {
 	unresolved := variableRegexp.FindString(value)
 	if unresolved != "" {
 		return fmt.Errorf("Unresolved variable %s. Available variables:\n%s", unresolved, context)

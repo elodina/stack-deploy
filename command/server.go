@@ -112,7 +112,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	}
 
 	if *bootstrap != "" {
-		var context *framework.StackContext
+		var context *framework.Variables
 		if frameworkStorage.BootstrapContext != nil && len(frameworkStorage.BootstrapContext.All()) > 0 {
 			log.Info("Restored bootstrap context from persistent storage")
 			context = frameworkStorage.BootstrapContext
@@ -162,7 +162,7 @@ func (sc *ServerCommand) Run(args []string) int {
 		schedulerConfig.FailoverTimeout = time.Duration(0)
 		storage = framework.NewInMemoryStorage()
 		userStorage = new(framework.NoopUserStorage)
-		stateStorage = new(framework.NoopStateStorage)
+		stateStorage = framework.NewInMemoryStateStorage()
 	}
 
 	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler)
@@ -175,7 +175,7 @@ func (sc *ServerCommand) Run(args []string) int {
 	return 0
 }
 
-func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, scheduler framework.Scheduler, retries int, backoff time.Duration) (*framework.StackContext, error) {
+func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Marathon, scheduler framework.Scheduler, retries int, backoff time.Duration) (*framework.Variables, error) {
 	stackFileData, err := ioutil.ReadFile(stackFile)
 	if err != nil {
 		log.Errorf("Can't read file %s", stackFile)
@@ -188,16 +188,22 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 	}
 
 	log.Debugf("Boostrapping with stack: \n%s", string(stackFileData))
-
-	var context *framework.StackContext
 	bootstrapZone := ""
+
+	context := framework.NewRunContext(framework.NewVariables())
+	context.StackName = stack.Name
+	context.Zone = bootstrapZone
+	context.Marathon = marathonClient
+	context.Scheduler = scheduler
+	context.StateStorage = framework.NewInMemoryStateStorage()
+
 	for i := 0; i < retries; i++ {
-		context, err = stack.Run(&framework.RunRequest{
+		err = stack.Run(&framework.RunRequest{
 			Zone:    bootstrapZone,
 			MaxWait: defaultApplicationMaxWait,
-		}, framework.NewContext(), marathonClient, scheduler, new(framework.NoopStateStorage))
+		}, context)
 		if err == nil {
-			return context, err
+			return context.Variables, nil
 		}
 
 		if err != nil && !regexp.MustCompile(marathon.ErrMarathonDown.Error()).MatchString(err.Error()) {
@@ -206,7 +212,7 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 		time.Sleep(backoff)
 	}
 
-	return context, err
+	return context.Variables, err
 }
 
 func (sc *ServerCommand) connectMarathon(url string, retries int, backoff time.Duration) (marathon.Marathon, error) {

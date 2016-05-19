@@ -24,7 +24,7 @@ import (
 
 type FrameworkStorage struct {
 	FrameworkID      string
-	BootstrapContext *StackContext
+	BootstrapContext *Variables
 
 	storage utils.Storage
 }
@@ -37,7 +37,7 @@ func NewFrameworkStorage(storage string) (*FrameworkStorage, error) {
 	}
 	return &FrameworkStorage{
 		storage:          store,
-		BootstrapContext: NewContext(),
+		BootstrapContext: NewVariables(),
 	}, nil
 }
 

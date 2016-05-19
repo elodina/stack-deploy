@@ -97,14 +97,14 @@ var validationCases map[*Application]error = map[*Application]error{
 	}: ErrApplicationNoTaskRunner,
 }
 
-var dependencyPositiveCases map[*Application]map[string]ApplicationState = map[*Application]map[string]ApplicationState{
+var dependencyPositiveCases map[*Application]map[string]ApplicationStatus = map[*Application]map[string]ApplicationStatus{
 	&Application{
 		Type:          "foo",
 		ID:            "foo",
 		Cpu:           0.5,
 		Mem:           512,
 		LaunchCommand: "sleep 10",
-	}: map[string]ApplicationState{},
+	}: map[string]ApplicationStatus{},
 
 	&Application{
 		Type:          "foo",
@@ -113,8 +113,8 @@ var dependencyPositiveCases map[*Application]map[string]ApplicationState = map[*
 		Mem:           512,
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar"},
-	}: map[string]ApplicationState{
-		"bar": StateRunning,
+	}: map[string]ApplicationStatus{
+		"bar": ApplicationStatusRunning,
 	},
 
 	&Application{
@@ -124,15 +124,15 @@ var dependencyPositiveCases map[*Application]map[string]ApplicationState = map[*
 		Mem:           512,
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar", "baz"},
-	}: map[string]ApplicationState{
-		"bar": StateRunning,
-		"baz": StateRunning,
-		"bak": StateStaging,
-		"bat": StateFailed,
+	}: map[string]ApplicationStatus{
+		"bar": ApplicationStatusRunning,
+		"baz": ApplicationStatusRunning,
+		"bak": ApplicationStatusStaging,
+		"bat": ApplicationStatusFailed,
 	},
 }
 
-var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*Application]map[string]ApplicationState{
+var dependencyNegativeCases map[*Application]map[string]ApplicationStatus = map[*Application]map[string]ApplicationStatus{
 	&Application{
 		Type:          "foo",
 		ID:            "foo",
@@ -140,7 +140,7 @@ var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*
 		Mem:           512,
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar"},
-	}: map[string]ApplicationState{},
+	}: map[string]ApplicationStatus{},
 
 	&Application{
 		Type:          "foo",
@@ -149,8 +149,8 @@ var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*
 		Mem:           512,
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar"},
-	}: map[string]ApplicationState{
-		"bar": StateStaging,
+	}: map[string]ApplicationStatus{
+		"bar": ApplicationStatusStaging,
 	},
 
 	&Application{
@@ -160,8 +160,8 @@ var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*
 		Mem:           512,
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar"},
-	}: map[string]ApplicationState{
-		"bar": StateFailed,
+	}: map[string]ApplicationStatus{
+		"bar": ApplicationStatusFailed,
 	},
 
 	&Application{
@@ -171,9 +171,9 @@ var dependencyNegativeCases map[*Application]map[string]ApplicationState = map[*
 		Mem:           512,
 		LaunchCommand: "sleep 10",
 		Dependencies:  []string{"bar", "baz"},
-	}: map[string]ApplicationState{
-		"bar": StateRunning,
-		"baz": StateStaging,
+	}: map[string]ApplicationStatus{
+		"bar": ApplicationStatusRunning,
+		"baz": ApplicationStatusStaging,
 	},
 }
 
@@ -251,7 +251,7 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Application should resolve variables", t, func() {
-		ctx := NewContext()
+		ctx := NewVariables()
 		ctx.SetStackVariable("foo", "bar")
 
 		app := new(Application)
@@ -381,7 +381,7 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Task runner should fill application context properly", t, func() {
-		ctx := NewContext()
+		ctx := NewVariables()
 		runner := new(MockTaskRunner)
 		client := NewMockMarathon()
 
@@ -406,28 +406,30 @@ func TestApplication(t *testing.T) {
 	})
 
 	Convey("Application run", t, func() {
-		ctx := NewContext()
 		client := NewMockMarathon()
-		scheduler := new(MockScheduler)
+		context := NewRunContext(NewVariables())
+		context.Marathon = client
+		context.Scheduler = new(MockScheduler)
+		context.StateStorage = NewInMemoryStateStorage()
 
 		app := new(Application)
 		app.ID = "foo"
 
 		Convey("Should fail if there is unresolved variable in BeforeScheduler script", func() {
 			app.BeforeScheduler = []string{"${bar}"}
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.BeforeScheduler = nil
 		})
 
 		Convey("Should fail if there is an error in BeforeScheduler script", func() {
 			app.BeforeScheduler = []string{"echozzz"}
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "exit status")
 			app.BeforeScheduler = nil
 		})
 
 		Convey("Should fail if there is unresolved variable in launch command", func() {
 			app.LaunchCommand = "./script --flag ${asd} --debug"
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.LaunchCommand = ""
 		})
 
@@ -436,24 +438,24 @@ func TestApplication(t *testing.T) {
 				"asd": "zxc",
 				"bar": "${baz}",
 			}
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.Scheduler = nil
 		})
 
 		Convey("Should fail if Marathon application creation fails", func() {
 			client.err = errors.New("boom!")
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+			So(app.Run(context, 2).Error(), ShouldEqual, "boom!")
 		})
 
 		Convey("Should fail if Marathon application is not running or healthy for too long", func() {
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Failed to await")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "Failed to await")
 		})
 
 		Convey("Should fail if there is unresolved variable in AfterScheduler script", func() {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
 			app.AfterScheduler = []string{"${bar}"}
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.AfterScheduler = nil
 			delete(client.applications, "foo")
 		})
@@ -462,7 +464,7 @@ func TestApplication(t *testing.T) {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
 			app.AfterScheduler = []string{"echozzz"}
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "exit status")
 			app.AfterScheduler = nil
 			delete(client.applications, "foo")
 		})
@@ -471,7 +473,7 @@ func TestApplication(t *testing.T) {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
 			app.AfterTasks = []string{"${bar}"}
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+			So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 			app.AfterTasks = nil
 			delete(client.applications, "foo")
 		})
@@ -504,7 +506,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+				So(app.Run(context, 2).Error(), ShouldEqual, "boom!")
 				delete(client.applications, "foo")
 			})
 
@@ -517,7 +519,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+				So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 				delete(client.applications, "foo")
 			})
 
@@ -530,7 +532,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+				So(app.Run(context, 2).Error(), ShouldContainSubstring, "exit status")
 				delete(client.applications, "foo")
 			})
 
@@ -543,7 +545,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldEqual, "boom!")
+				So(app.Run(context, 2).Error(), ShouldEqual, "boom!")
 				delete(client.applications, "foo")
 			})
 
@@ -556,7 +558,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "Unresolved variable")
+				So(app.Run(context, 2).Error(), ShouldContainSubstring, "Unresolved variable")
 				delete(client.applications, "foo")
 			})
 
@@ -569,7 +571,7 @@ func TestApplication(t *testing.T) {
 
 				go reportHealthy(client, "foo", 100*time.Millisecond)
 
-				So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2).Error(), ShouldContainSubstring, "exit status")
+				So(app.Run(context, 2).Error(), ShouldContainSubstring, "exit status")
 				delete(client.applications, "foo")
 			})
 		})
@@ -577,7 +579,7 @@ func TestApplication(t *testing.T) {
 		Convey("Should succeed if everything is ok", func() {
 			go reportHealthy(client, "foo", 100*time.Millisecond)
 
-			So(app.Run(ctx, client, scheduler, new(MockStateStorage), 2), ShouldBeNil)
+			So(app.Run(context, 2), ShouldBeNil)
 			delete(client.applications, "foo")
 		})
 	})
