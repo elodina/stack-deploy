@@ -39,7 +39,7 @@ func NewElasticsearchTaskRunner(awaitTimeout time.Duration, backoffTimeout time.
 	}
 }
 
-func (etr *ElasticsearchTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (etr *ElasticsearchTaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -66,7 +66,7 @@ func (etr *ElasticsearchTaskRunner) FillContext(context *framework.StackContext,
 	return nil
 }
 
-func (etr *ElasticsearchTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (etr *ElasticsearchTaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	return errors.New("Elasticsearch task runner does not support running tasks.")
 }
 

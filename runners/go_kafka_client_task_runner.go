@@ -28,7 +28,7 @@ import (
 
 type GoKafkaClientTaskRunner struct{}
 
-func (tr *GoKafkaClientTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (tr *GoKafkaClientTaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -38,7 +38,7 @@ func (tr *GoKafkaClientTaskRunner) FillContext(context *framework.StackContext, 
 	return nil
 }
 
-func (tr *GoKafkaClientTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (tr *GoKafkaClientTaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewGoKafkaClientMesosClient(api)

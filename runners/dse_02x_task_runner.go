@@ -29,7 +29,7 @@ import (
 
 type DSE02xTaskRunner struct{}
 
-func (dtr *DSE02xTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (dtr *DSE02xTaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -39,7 +39,7 @@ func (dtr *DSE02xTaskRunner) FillContext(context *framework.StackContext, applic
 	return nil
 }
 
-func (dtr *DSE02xTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (dtr *DSE02xTaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewDSEMesos02xClient(api)
@@ -61,7 +61,7 @@ func (dtr *DSE02xTaskRunner) RunTask(context *framework.StackContext, applicatio
 	return dtr.fillTaskContext(context, application, response)
 }
 
-func (dtr *DSE02xTaskRunner) fillTaskContext(context *framework.StackContext, application *framework.Application, response []byte) error {
+func (dtr *DSE02xTaskRunner) fillTaskContext(context *framework.Variables, application *framework.Application, response []byte) error {
 	startResponse := new(DSEMesos02xStartResponse)
 	err := json.Unmarshal(response, &startResponse)
 	if err != nil {

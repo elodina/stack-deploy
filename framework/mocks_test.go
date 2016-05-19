@@ -27,8 +27,8 @@ func (*MockStorage) GetStack(name string) (*Stack, error) {
 
 type FakeStack struct{}
 
-func (*FakeStack) Run(*RunRequest, *StackContext, marathon.Marathon, Scheduler, StateStorage) (*StackContext, error) {
-	return &StackContext{}, nil
+func (*FakeStack) Run(*RunRequest, *RunContext) error {
+	return nil
 }
 func (*FakeStack) GetStack() *Stack {
 	return &Stack{
@@ -68,13 +68,17 @@ func (*MockUserStorage) RefreshToken(string) (string, error)         { return ""
 
 type MockStateStorage struct{}
 
-func (*MockStateStorage) SaveTaskState(map[string]string, map[string]string, ApplicationState) error {
+func (*MockStateStorage) SaveStackVariables(stack string, zone string, variables *Variables) error {
 	return nil
 }
-func (*MockStateStorage) SaveApplicationState(string, string, ApplicationState) error { return nil }
-func (*MockStateStorage) SaveStackState(string, ApplicationState) error               { return nil }
-func (*MockStateStorage) GetStackState(string) (map[string]ApplicationState, error) {
-	return make(map[string]ApplicationState), nil
+func (*MockStateStorage) SaveApplicationStatus(stack string, zone string, applicationName string, status ApplicationStatus) error {
+	return nil
+}
+func (*MockStateStorage) SaveStackStatus(name string, zone string, status StackStatus) error {
+	return nil
+}
+func (*MockStateStorage) GetStackState(name string, zone string) (*StackState, error) {
+	return nil, nil
 }
 
 type MockTaskRunner struct {
@@ -82,11 +86,11 @@ type MockTaskRunner struct {
 	runErr  error
 }
 
-func (m *MockTaskRunner) FillContext(context *StackContext, application *Application, task marathon.Task) error {
+func (m *MockTaskRunner) FillContext(context *Variables, application *Application, task marathon.Task) error {
 	context.SetStackVariable("foo", "bar")
 	return m.fillErr
 }
-func (m *MockTaskRunner) RunTask(context *StackContext, application *Application, task map[string]string) error {
+func (m *MockTaskRunner) RunTask(context *Variables, application *Application, task map[string]string) error {
 	return m.runErr
 }
 

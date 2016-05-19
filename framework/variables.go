@@ -21,57 +21,57 @@ import (
 	"sync"
 )
 
-type StackContext struct {
+type Variables struct {
 	lock               sync.RWMutex
 	stackVariables     map[string]string
 	arbitraryVariables map[string]string
 	globalVariables    map[string]string
 }
 
-func NewContext() *StackContext {
-	return &StackContext{
+func NewVariables() *Variables {
+	return &Variables{
 		stackVariables:     make(map[string]string),
 		arbitraryVariables: make(map[string]string),
 		globalVariables:    make(map[string]string),
 	}
 }
 
-func (c *StackContext) SetStackVariable(key string, value string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (v *Variables) SetStackVariable(key string, value string) {
+	v.lock.Lock()
+	defer v.lock.Unlock()
 
-	c.stackVariables[key] = value
+	v.stackVariables[key] = value
 }
 
-func (c *StackContext) SetArbitraryVariable(key string, value string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (v *Variables) SetArbitraryVariable(key string, value string) {
+	v.lock.Lock()
+	defer v.lock.Unlock()
 
-	c.arbitraryVariables[key] = value
+	v.arbitraryVariables[key] = value
 }
 
-func (c *StackContext) SetGlobalVariable(key string, value string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (v *Variables) SetGlobalVariable(key string, value string) {
+	v.lock.Lock()
+	defer v.lock.Unlock()
 
-	c.globalVariables[key] = value
+	v.globalVariables[key] = value
 }
 
-func (c *StackContext) Get(key string) (string, error) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+func (v *Variables) Get(key string) (string, error) {
+	v.lock.RLock()
+	defer v.lock.RUnlock()
 
-	value, ok := c.stackVariables[key]
+	value, ok := v.stackVariables[key]
 	if ok {
 		return value, nil
 	}
 
-	value, ok = c.arbitraryVariables[key]
+	value, ok = v.arbitraryVariables[key]
 	if ok {
 		return value, nil
 	}
 
-	value, ok = c.globalVariables[key]
+	value, ok = v.globalVariables[key]
 	if ok {
 		return value, nil
 	}
@@ -79,8 +79,8 @@ func (c *StackContext) Get(key string) (string, error) {
 	return "", fmt.Errorf("Key %s is not present", key)
 }
 
-func (c *StackContext) MustGet(key string) string {
-	value, err := c.Get(key)
+func (v *Variables) MustGet(key string) string {
+	value, err := v.Get(key)
 	if err != nil {
 		panic(err)
 	}
@@ -88,28 +88,28 @@ func (c *StackContext) MustGet(key string) string {
 	return value
 }
 
-func (c *StackContext) All() map[string]string {
+func (v *Variables) All() map[string]string {
 	allVariables := make(map[string]string)
-	for k, v := range c.globalVariables {
+	for k, v := range v.globalVariables {
 		allVariables[k] = v
 	}
 
-	for k, v := range c.arbitraryVariables {
+	for k, v := range v.arbitraryVariables {
 		allVariables[k] = v
 	}
 
-	for k, v := range c.stackVariables {
+	for k, v := range v.stackVariables {
 		allVariables[k] = v
 	}
 
 	return allVariables
 }
 
-func (c *StackContext) String() string {
+func (v *Variables) String() string {
 	str, err := json.MarshalIndent(map[string]interface{}{
-		"StackVariables":     c.stackVariables,
-		"ArbitraryVariables": c.arbitraryVariables,
-		"GlobalVariables":    c.globalVariables,
+		"StackVariables":     v.stackVariables,
+		"ArbitraryVariables": v.arbitraryVariables,
+		"GlobalVariables":    v.globalVariables,
 	}, "", "  ")
 	if err != nil {
 		panic(err)
@@ -118,31 +118,31 @@ func (c *StackContext) String() string {
 	return string(str)
 }
 
-func (c *StackContext) MarshalJSON() ([]byte, error) {
+func (v *Variables) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]map[string]string{
-		"StackVariables":     c.stackVariables,
-		"ArbitraryVariables": c.arbitraryVariables,
-		"GlobalVariables":    c.globalVariables,
+		"StackVariables":     v.stackVariables,
+		"ArbitraryVariables": v.arbitraryVariables,
+		"GlobalVariables":    v.globalVariables,
 	})
 }
 
-func (c *StackContext) UnmarshalJSON(data []byte) error {
+func (v *Variables) UnmarshalJSON(data []byte) error {
 	ctx := make(map[string]map[string]string)
 	err := json.Unmarshal(data, &ctx)
 	if err != nil {
 		return err
 	}
 
-	for k, v := range ctx["StackVariables"] {
-		c.SetStackVariable(k, v)
+	for key, value := range ctx["StackVariables"] {
+		v.SetStackVariable(key, value)
 	}
 
-	for k, v := range ctx["ArbitraryVariables"] {
-		c.SetArbitraryVariable(k, v)
+	for key, value := range ctx["ArbitraryVariables"] {
+		v.SetArbitraryVariable(key, value)
 	}
 
-	for k, v := range ctx["GlobalVariables"] {
-		c.SetGlobalVariable(k, v)
+	for key, value := range ctx["GlobalVariables"] {
+		v.SetGlobalVariable(key, value)
 	}
 
 	return nil

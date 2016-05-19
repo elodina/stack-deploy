@@ -28,7 +28,7 @@ import (
 
 type KafkaTaskRunner struct{}
 
-func (ktr *KafkaTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (ktr *KafkaTaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -38,7 +38,7 @@ func (ktr *KafkaTaskRunner) FillContext(context *framework.StackContext, applica
 	return nil
 }
 
-func (ktr *KafkaTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (ktr *KafkaTaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewKafkaMesosClient(api)

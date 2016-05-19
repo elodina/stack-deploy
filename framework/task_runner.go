@@ -32,8 +32,8 @@ var TaskRunners map[string]TaskRunner
 var MesosTaskRunners map[string]MesosTaskRunner
 
 type TaskRunner interface {
-	FillContext(context *StackContext, application *Application, task marathon.Task) error
-	RunTask(context *StackContext, application *Application, task map[string]string) error
+	FillContext(context *Variables, application *Application, task marathon.Task) error
+	RunTask(context *Variables, application *Application, task map[string]string) error
 }
 
 type MesosTaskRunner interface {

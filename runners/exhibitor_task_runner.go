@@ -30,7 +30,7 @@ import (
 
 type ExhibitorTaskRunner struct{}
 
-func (etr *ExhibitorTaskRunner) FillContext(context *framework.StackContext, application *framework.Application, task marathon.Task) error {
+func (etr *ExhibitorTaskRunner) FillContext(context *framework.Variables, application *framework.Application, task marathon.Task) error {
 	context.SetStackVariable(fmt.Sprintf("%s.host", application.ID), task.Host)
 	for idx, port := range task.Ports {
 		context.SetStackVariable(fmt.Sprintf("%s.port%d", application.ID, idx), fmt.Sprint(port))
@@ -40,7 +40,7 @@ func (etr *ExhibitorTaskRunner) FillContext(context *framework.StackContext, app
 	return nil
 }
 
-func (etr *ExhibitorTaskRunner) RunTask(context *framework.StackContext, application *framework.Application, task map[string]string) error {
+func (etr *ExhibitorTaskRunner) RunTask(context *framework.Variables, application *framework.Application, task map[string]string) error {
 	api := context.MustGet(fmt.Sprintf("%s.api", application.ID))
 
 	client := NewExhibitorMesosClient(api)
@@ -67,7 +67,7 @@ func (etr *ExhibitorTaskRunner) RunTask(context *framework.StackContext, applica
 	return client.AwaitZookeeperRunning()
 }
 
-func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.StackContext, application *framework.Application, response *exhibitorCluster) error {
+func (etr *ExhibitorTaskRunner) fillTaskContext(context *framework.Variables, application *framework.Application, response *exhibitorCluster) error {
 	servers := make([]string, 0)
 	serversMap := make(map[string]string)
 
