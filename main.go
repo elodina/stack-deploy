@@ -61,6 +61,12 @@ func commands() map[string]cli.CommandFactory {
 		"scheduled": func() (cli.Command, error) {
 			return new(command.ScheduledCommand), nil
 		},
+		"export": func() (cli.Command, error) {
+			return new(command.ExportCommand), nil
+		},
+		"import": func() (cli.Command, error) {
+			return new(command.ImportCommand), nil
+		},
 	}
 }
 

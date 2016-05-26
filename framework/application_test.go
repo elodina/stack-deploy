@@ -410,7 +410,7 @@ func TestApplication(t *testing.T) {
 		context := NewRunContext(NewVariables())
 		context.Marathon = client
 		context.Scheduler = new(MockScheduler)
-		context.StateStorage = NewInMemoryStateStorage()
+		context.Storage = NewInMemoryStorage()
 
 		app := new(Application)
 		app.ID = "foo"

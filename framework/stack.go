@@ -146,16 +146,16 @@ func (s *Stack) Run(request *RunRequest, context *RunContext) error {
 	for status := range statuses {
 		if status.Error != nil {
 			Logger.Warn("Application %s failed with error %s", status.Application.ID, status.Error)
-			_ = context.StateStorage.SaveApplicationStatus(context.StackName, context.Zone, status.Application.ID, ApplicationStatusFailed)
+			_ = context.Storage.SaveApplicationStatus(context.StackName, context.Zone, status.Application.ID, ApplicationStatusFailed)
 			return fmt.Errorf("%s: %s", status.Application.ID, status.Error)
 		}
 
 		runningApps[status.Application.ID] = ApplicationStatusRunning
-		err = context.StateStorage.SaveApplicationStatus(context.StackName, context.Zone, status.Application.ID, ApplicationStatusRunning)
+		err = context.Storage.SaveApplicationStatus(context.StackName, context.Zone, status.Application.ID, ApplicationStatusRunning)
 		if err != nil {
 			return err
 		}
-		err = context.StateStorage.SaveStackVariables(context.StackName, context.Zone, context.Variables)
+		err = context.Storage.SaveStackVariables(context.StackName, context.Zone, context.Variables)
 		if err != nil {
 			return err
 		}

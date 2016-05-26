@@ -46,6 +46,22 @@ func (*MockStorage) StoreStack(*Stack) error               { return nil }
 func (*MockStorage) RemoveStack(string, bool) error        { return nil }
 func (*MockStorage) Init() error                           { return nil }
 func (*MockStorage) GetLayersStack(string) (Merger, error) { return &FakeStack{}, nil }
+func (*MockStorage) SaveStackVariables(stack string, zone string, variables *Variables) error {
+	return nil
+}
+func (*MockStorage) SaveApplicationStatus(stack string, zone string, applicationName string, status ApplicationStatus) error {
+	return nil
+}
+func (*MockStorage) SaveStackStatus(name string, zone string, status StackStatus) error {
+	return nil
+}
+func (*MockStorage) GetStackState(name string, zone string) (*StackState, error) {
+	return nil, nil
+}
+
+func (*MockStorage) GetState() (*StackDeployState, error) {
+	return nil, nil
+}
 
 type MockUserStorage struct{}
 
@@ -65,21 +81,6 @@ func (*MockUserStorage) IsAdmin(user string) (bool, error) {
 }
 func (*MockUserStorage) CreateUser(string, UserRole) (string, error) { return "", nil }
 func (*MockUserStorage) RefreshToken(string) (string, error)         { return "", nil }
-
-type MockStateStorage struct{}
-
-func (*MockStateStorage) SaveStackVariables(stack string, zone string, variables *Variables) error {
-	return nil
-}
-func (*MockStateStorage) SaveApplicationStatus(stack string, zone string, applicationName string, status ApplicationStatus) error {
-	return nil
-}
-func (*MockStateStorage) SaveStackStatus(name string, zone string, status StackStatus) error {
-	return nil
-}
-func (*MockStateStorage) GetStackState(name string, zone string) (*StackState, error) {
-	return nil, nil
-}
 
 type MockTaskRunner struct {
 	fillErr error

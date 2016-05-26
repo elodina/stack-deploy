@@ -24,12 +24,11 @@ func TestNewApiServer(t *testing.T) {
 		marathonClient := NewMockMarathon()
 		storage := &MockStorage{}
 		userStorage := &MockUserStorage{}
-		stateStorage := &MockStateStorage{}
 		scheduler := &MockScheduler{}
 		scheduler.state = &FakeMesos{}
 
 		Convey("When creating new API Server", func() {
-			server := NewApiServer(api, marathonClient, nil, storage, userStorage, stateStorage, scheduler)
+			server := NewApiServer(api, marathonClient, nil, storage, userStorage, scheduler)
 
 			Convey("It should return not nil server", func() {
 				So(server, ShouldNotBeNil)
@@ -372,6 +371,68 @@ func TestHandlers(t *testing.T) {
 
 	})
 
+}
+
+func TestStackDeployServer(t *testing.T) {
+	Convey("Stack Deploy server", t, func() {
+		api := TestEndpoint
+		marathonClient := NewMockMarathon()
+		storage := &MockStorage{}
+		userStorage := &MockUserStorage{}
+		scheduler := &MockScheduler{}
+		scheduler.state = &FakeMesos{}
+		server := NewApiServer(api, marathonClient, nil, storage, userStorage, scheduler)
+
+		Convey("should add a valid stack tree", func() {
+			stacks := []*Stack{
+				&Stack{
+					From: "stack1",
+					Name: "stack2",
+				},
+				&Stack{
+					Name: "stack1",
+				},
+				&Stack{
+					Name: "stack3",
+				},
+				&Stack{
+					From: "stack4",
+					Name: "stack5",
+				},
+				&Stack{
+					From: "stack3",
+					Name: "stack4",
+				},
+			}
+
+			err := server.addStacks(stacks, make(map[string]struct{}))
+			So(err, ShouldBeNil)
+		})
+
+		Convey("should fail to add an invalid stack tree", func() {
+			stacks := []*Stack{
+				&Stack{
+					From: "stack1",
+					Name: "stack2",
+				},
+				&Stack{
+					Name: "stack1",
+				},
+				&Stack{
+					From: "stack4",
+					Name: "stack5",
+				},
+				&Stack{
+					From: "stack3",
+					Name: "stack4",
+				},
+			}
+
+			err := server.addStacks(stacks, make(map[string]struct{}))
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Orphan stack")
+		})
+	})
 }
 
 func createLayer(layer string) (*http.Response, error) {

@@ -18,12 +18,12 @@ package framework
 import "github.com/gambol99/go-marathon"
 
 type RunContext struct {
-	StackName    string
-	Zone         string
-	Variables    *Variables
-	Marathon     marathon.Marathon
-	Scheduler    Scheduler
-	StateStorage StateStorage
+	StackName string
+	Zone      string
+	Variables *Variables
+	Marathon  marathon.Marathon
+	Scheduler Scheduler
+	Storage   Storage
 }
 
 func NewRunContext(variables *Variables) *RunContext {

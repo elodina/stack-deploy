@@ -12,8 +12,6 @@ import (
 	"strings"
 )
 
-const defaultApplicationMaxWait = 600 // 10 minutes
-
 type vars map[string]string
 
 func (v vars) String() string {
@@ -65,7 +63,7 @@ func (rc *RunCommand) Run(args []string) int {
 		flags            = flag.NewFlagSet("run", flag.ExitOnError)
 		apiUrl           = flags.String("api", "", "Stack-deploy server address.")
 		zone             = flags.String("zone", "", "Zone to run stack.")
-		maxWait          = flags.Int("max.wait", defaultApplicationMaxWait, "Maximum time to wait for each application in a stack to become running and healthy.")
+		maxWait          = flags.Int("max.wait", api.DefaultApplicationMaxWait, "Maximum time to wait for each application in a stack to become running and healthy.")
 		variables        = make(vars)
 		skipApplications = make(skipApplications, 0)
 	)

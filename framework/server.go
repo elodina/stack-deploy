@@ -16,13 +16,11 @@ type StackDeployServer struct {
 	marathonClient  marathon.Marathon
 	globalVariables map[string]string
 	storage         Storage
-	stateStorage    StateStorage
 	userStorage     UserStorage
 	scheduler       Scheduler
 }
 
-func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables map[string]string, storage Storage, userStorage UserStorage, stateStorage StateStorage,
-	scheduler Scheduler) *StackDeployServer {
+func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables map[string]string, storage Storage, userStorage UserStorage, scheduler Scheduler) *StackDeployServer {
 	if strings.HasPrefix(api, "http://") {
 		api = api[len("http://"):]
 	}
@@ -31,7 +29,6 @@ func NewApiServer(api string, marathonClient marathon.Marathon, globalVariables 
 		marathonClient:  marathonClient,
 		globalVariables: globalVariables,
 		storage:         storage,
-		stateStorage:    stateStorage,
 		userStorage:     userStorage,
 		scheduler:       scheduler,
 	}
@@ -53,6 +50,9 @@ func (ts *StackDeployServer) Start() {
 	http.HandleFunc("/refreshtoken", ts.Auth(ts.Admin(ts.RefreshTokenHandler)))
 
 	http.HandleFunc("/createlayer", ts.Auth(ts.CreateLayerHandler))
+
+	http.HandleFunc("/state", ts.Auth(ts.GetStateHandler))
+	http.HandleFunc("/importstate", ts.Auth(ts.ImportStateHandler))
 
 	err := ts.scheduler.Start()
 	if err != nil {
@@ -181,7 +181,7 @@ func (ts *StackDeployServer) RunHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		context := NewRunContext(variables)
-		err = ts.runStack(runRequest, context, ts.storage)
+		err = ts.runStack(runRequest, context)
 		if err != nil {
 			Logger.Error("Run stack error: %s", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -331,17 +331,63 @@ func (ts *StackDeployServer) RefreshTokenHandler(w http.ResponseWriter, r *http.
 	w.Write([]byte(key))
 }
 
+func (ts *StackDeployServer) GetStateHandler(w http.ResponseWriter, r *http.Request) {
+	Logger.Debug("Received get state command")
+	defer r.Body.Close()
+
+	state, err := ts.storage.GetState()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	jsonState, err := json.Marshal(state)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonState)
+}
+
+func (ts *StackDeployServer) ImportStateHandler(w http.ResponseWriter, r *http.Request) {
+	Logger.Debug("Received import state command")
+	defer r.Body.Close()
+
+	decoder := json.NewDecoder(r.Body)
+	var stringState string
+	err := decoder.Decode(&stringState)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var state *StackDeployState
+	err = json.Unmarshal([]byte(stringState), &state)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = ts.restoreState(state)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func (ts *StackDeployServer) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (ts *StackDeployServer) runStack(request *RunRequest, context *RunContext, storage Storage) error {
-	runner, err := storage.GetStackRunner(request.Name)
+func (ts *StackDeployServer) runStack(request *RunRequest, context *RunContext) error {
+	runner, err := ts.storage.GetStackRunner(request.Name)
 	if err != nil {
 		return err
 	}
 	if request.Zone != "" {
-		layers, err := storage.GetLayersStack(request.Zone)
+		layers, err := ts.storage.GetLayersStack(request.Zone)
 		if err != nil {
 			return err
 		}
@@ -354,19 +400,85 @@ func (ts *StackDeployServer) runStack(request *RunRequest, context *RunContext, 
 	context.Zone = request.Zone
 	context.Marathon = ts.marathonClient
 	context.Scheduler = ts.scheduler
-	context.StateStorage = ts.stateStorage
-	err = context.StateStorage.SaveStackStatus(context.StackName, context.Zone, StackStatusStaging)
+	context.Storage = ts.storage
+	err = context.Storage.SaveStackStatus(context.StackName, context.Zone, StackStatusStaging)
 	if err != nil {
 		return err
 	}
 
 	err = runner.Run(request, context)
 	if err != nil {
-		_ = context.StateStorage.SaveStackStatus(context.StackName, context.Zone, StackStatusFailed)
+		_ = context.Storage.SaveStackStatus(context.StackName, context.Zone, StackStatusFailed)
 	} else {
-		err = context.StateStorage.SaveStackStatus(context.StackName, context.Zone, StackStatusRunning)
+		err = context.Storage.SaveStackStatus(context.StackName, context.Zone, StackStatusRunning)
 	}
 	return err
+}
+
+func (ts *StackDeployServer) restoreState(state *StackDeployState) error {
+	err := ts.addStacks(state.GetStacks(), make(map[string]struct{}))
+	if err != nil {
+		return err
+	}
+
+	stacks := StackStateSlice(state.RunningStacks)
+	// we should run stacks in the same order as we did initially
+	sort.Sort(stacks)
+
+	runningStacks := make([]*StackState, 0)
+	// also filter only running stacks
+	for _, stackState := range stacks {
+		if stackState.Status == StackStatusRunning {
+			runningStacks = append(runningStacks, stackState)
+		}
+	}
+
+	// now run these stacks in a given order
+	for _, stackState := range runningStacks {
+		runRequest := NewRunRequest()
+		runRequest.Name = stackState.Name
+		runRequest.Zone = stackState.Zone
+
+		variables := NewVariables()
+		for varName, varValue := range ts.globalVariables {
+			variables.SetGlobalVariable(varName, varValue)
+		}
+		context := NewRunContext(variables)
+		err := ts.runStack(runRequest, context)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (ts *StackDeployServer) addStacks(stacks []*Stack, addedStacks map[string]struct{}) error {
+	if len(stacks) == 0 {
+		return nil
+	}
+
+	var addedAtLeastOnce bool
+	childStacks := make([]*Stack, 0)
+	for _, stack := range stacks {
+		_, exists := addedStacks[stack.From]
+		if stack.From == "" || exists {
+			addedAtLeastOnce = true
+			err := ts.storage.StoreStack(stack)
+			if err != nil {
+				return err
+			}
+			addedStacks[stack.Name] = struct{}{}
+		} else {
+			childStacks = append(childStacks, stack)
+		}
+	}
+
+	if !addedAtLeastOnce {
+		return fmt.Errorf("Orphan stack '%s' detected, preventing infinite loop", stacks[0].Name)
+	}
+
+	return ts.addStacks(childStacks, addedStacks)
 }
 
 func layerToInt(layer string) (int, error) {

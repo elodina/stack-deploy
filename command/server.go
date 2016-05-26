@@ -138,7 +138,6 @@ func (sc *ServerCommand) Run(args []string) int {
 
 	var storage framework.Storage
 	var userStorage framework.UserStorage
-	var stateStorage framework.StateStorage
 	var key string
 	if !*dev {
 		var connection *gocql.Session
@@ -152,20 +151,14 @@ func (sc *ServerCommand) Run(args []string) int {
 		if err != nil {
 			panic(err)
 		}
-
-		stateStorage, err = framework.NewCassandraStateStorage(connection, *keyspace)
-		if err != nil {
-			panic(err)
-		}
 	} else {
 		log.Warning("Starting in developer mode. DO NOT use this in production!")
 		schedulerConfig.FailoverTimeout = time.Duration(0)
 		storage = framework.NewInMemoryStorage()
 		userStorage = new(framework.NoopUserStorage)
-		stateStorage = framework.NewInMemoryStateStorage()
 	}
 
-	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, stateStorage, scheduler)
+	apiServer := framework.NewApiServer(*api, marathonClient, variables, storage, userStorage, scheduler)
 	if key != "" {
 		fmt.Printf("***\nAdmin user key: %s\n***\n", key)
 	}
@@ -195,12 +188,12 @@ func (sc *ServerCommand) Bootstrap(stackFile string, marathonClient marathon.Mar
 	context.Zone = bootstrapZone
 	context.Marathon = marathonClient
 	context.Scheduler = scheduler
-	context.StateStorage = framework.NewInMemoryStateStorage()
+	context.Storage = framework.NewInMemoryStorage()
 
 	for i := 0; i < retries; i++ {
 		err = stack.Run(&framework.RunRequest{
 			Zone:    bootstrapZone,
-			MaxWait: defaultApplicationMaxWait,
+			MaxWait: framework.DefaultApplicationMaxWait,
 		}, context)
 		if err == nil {
 			return context.Variables, nil

@@ -133,6 +133,10 @@ func (v *Variables) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	v.stackVariables = make(map[string]string)
+	v.arbitraryVariables = make(map[string]string)
+	v.globalVariables = make(map[string]string)
+
 	for key, value := range ctx["StackVariables"] {
 		v.SetStackVariable(key, value)
 	}

@@ -35,6 +35,8 @@ var ErrTaskNotRunning = errors.New("Task is not running")
 
 var ErrHealthcheckNotPassing = errors.New("Task healthcheck is not passing")
 
-var ErrStackStateExists = errors.New("Stack state already exists")
-
 var ErrStackStateDoesNotExist = errors.New("Stack state does not exist")
+
+var ErrStackExists = errors.New("Stack already exists")
+
+var ErrStackDoesNotExist = errors.New("Stack does not exist")

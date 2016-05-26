@@ -15,6 +15,8 @@ limitations under the License. */
 
 package framework
 
+const DefaultApplicationMaxWait = 600 // 10 minutes
+
 type GetStackRequest struct {
 	Name string `json:"name"`
 }
@@ -34,6 +36,12 @@ type RunRequest struct {
 	MaxWait          int               `json:"maxwait"`
 	Variables        map[string]string `json:"variables"`
 	SkipApplications []string          `json:"skip"`
+}
+
+func NewRunRequest() *RunRequest {
+	return &RunRequest{
+		MaxWait: DefaultApplicationMaxWait,
+	}
 }
 
 type CreateLayerRequest struct {

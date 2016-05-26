@@ -89,6 +89,31 @@ func (c *Client) GetStack(data *GetStackRequest) (*Stack, error) {
 	return stack, err
 }
 
+func (c *Client) GetState() ([]byte, error) {
+	request := apiRequest{
+		url: "/state",
+	}
+	content, err := c.request(request)
+	if err != nil {
+		return nil, err
+	}
+
+	return content, err
+}
+
+func (c *Client) ImportState(state []byte) error {
+	request := apiRequest{
+		url:  "/importstate",
+		data: string(state),
+	}
+	_, err := c.request(request)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
 func (c *Client) Run(data *RunRequest) error {
 	request := apiRequest{
 		url:  "/run",
